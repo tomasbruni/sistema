@@ -1,0 +1,70 @@
+/* ── SearchableSelect ────────────────────────────────────────────────────── */
+
+.ss-wrapper {
+  position: relative;
+}
+
+.ss-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.ss-input:focus {
+  outline: none;
+  border-color: #1a1a2e;
+}
+
+.ss-input:disabled {
+  background: #f0f0f0;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.ss-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  z-index: 100;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.ss-option {
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.ss-option:hover {
+  background: #f0f0f0;
+}
+
+.ss-option-selected {
+  background: #eef;
+  font-weight: 600;
+}
+
+.ss-empty {
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  color: #999;
+}
+
+.ss-option-activo {
+  background: #e8e8ff;
+  outline: none;
+}
+ 

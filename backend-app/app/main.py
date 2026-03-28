@@ -1,0 +1,66 @@
+from fastapi import FastAPI, Depends, HTTPException, status
+# from api.routers.accesorios import 
+from typing import Annotated
+from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
+from app.api.routers import (
+    router_accesorios, 
+    router_tipoaccesorios, 
+    router_subtipoaccesorios,
+    router_celulares,
+    router_chips,
+    router_marcas,
+    router_modeloscelulares,
+    router_stock,
+    router_ventas,
+    router_locales,
+    router_movimientos,
+    router_comisiones,
+    router_usuarios,
+    router_reportes,
+    router_auth,
+    router_detalles,
+    router_ingresos)
+
+from app.db.models import *
+from app.db.session import get_session, SessionDep
+# si quisiera q todas las operaciones de la aplicacion dependan de algun callable
+#app = FastAPI(dependencies=[Depends(verify_token), Depends(verify_key)])
+
+from fastapi.middleware.cors import CORSMiddleware
+
+mainapp = FastAPI()
+mainapp.include_router(router_accesorios.router)
+mainapp.include_router(router_tipoaccesorios.router)
+mainapp.include_router(router_subtipoaccesorios.router)
+mainapp.include_router(router_celulares.router)
+mainapp.include_router(router_chips.router)
+mainapp.include_router(router_marcas.router)
+mainapp.include_router(router_modeloscelulares.router)
+mainapp.include_router(router_stock.router)
+mainapp.include_router(router_ventas.router)
+mainapp.include_router(router_locales.router)
+mainapp.include_router(router_movimientos.router)
+mainapp.include_router(router_comisiones.router)
+mainapp.include_router(router_usuarios.router)
+mainapp.include_router(router_reportes.router)
+mainapp.include_router(router_auth.router)
+mainapp.include_router(router_detalles.router)
+mainapp.include_router(router_ingresos.router)
+
+#esto de abajo es para permitir leer el json del doc
+origins = [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "http://localhost:5173"    
+]
+
+mainapp.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,   # o ["*"] para permitir todo (solo desarrollo)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

@@ -1,0 +1,128 @@
+/* ── VentasPage ──────────────────────────────────────────────────────────── */
+
+/* ── Acciones del header ─────────────────────────────────────────────────── */
+.page-header-acciones {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-primary {
+  background-color: green;
+}
+
+.btn-devolucion {
+  background: #ff0000;
+  color: #fff;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-devolucion:hover:not(:disabled) { opacity: 0.85; }
+.btn-devolucion:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-ver-detalle {
+  background: #303130;
+  color: #ffffff;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+/* ── Botones agregar producto ────────────────────────────────────────────── */
+.venta-agregar-btns {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+/* ── Input editable dentro del carrito ───────────────────────────────────── */
+.input-carrito {
+  width: 80px;
+  padding: 5px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  text-align: right;
+}
+
+.input-carrito:focus {
+  outline: none;
+  border-color: #1a1a2e;
+}
+
+/* ── Total ───────────────────────────────────────────────────────────────── */
+.venta-total {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 2px solid #1a1a2e;
+  font-size: 1rem;
+}
+
+.venta-total strong {
+  font-size: 1.15rem;
+  color: #1a1a2e;
+}
+
+/* ── Hint suma pagos ─────────────────────────────────────────────────────── */
+.venta-pago-hint {
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+
+.hint-ok    { color: #155724; }
+.hint-error { color: #721c24; }
+
+/* ── Badges de tipo ──────────────────────────────────────────────────────── */
+.tipo-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.tipo-accesorio { background: #e8f0fe; color: #1a1a6e; }
+.tipo-celular   { background: #e6f4ea; color: #1a5c1a; }
+.tipo-chip      { background: #fef3e2; color: #7a4800; }
+.tipo-venta     { background: #e8f0fe; color: #1a1a6e; }
+.tipo-devolucion { background: #f8d7da; color: #721c24; }
+
+/* ── Pagos en la tabla listado ───────────────────────────────────────────── */
+.venta-pagos-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pago-badge {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* ── Fila devolución ─────────────────────────────────────────────────────── */
+.row-devolucion td {
+  color: #721c24;
+  background: #fff8f8;
+}
+
+.form-card-ventas {
+  display: flex;
+}

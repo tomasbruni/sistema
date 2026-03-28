@@ -1,0 +1,745 @@
+import { useState, useEffect } from 'react'
+import './AccesoriosPage.css'
+import './VentasPage.css'
+import { api, LIMIT } from '../api/api'
+import { useAlerta } from '../hooks/useAlerta'
+import SearchableSelect from '../components/SearchableSelect/SearchableSelect'
+import useSelectOptions from '../hooks/useSelectOptions/'
+import {useAuth} from '../hooks/useAuth'
+import { useModalDetalle } from '../hooks/ventas/useModalDetalles'
+import ModalDetalle from '../components/ventas/ModalDetalle'
+import { formatFecha, formatPrecio } from '../helpers/formats'
+
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
+export default function VentasPage() {
+  const { alerta, mostrarAlerta } = useAlerta()
+  const {rol} = useAuth()
+
+  // ── Modo ──────────────────────────────────────────────────────────────────
+  const [modo, setModo] = useState('listado') // 'listado' | 'creacion'
+  const [tipoOperacion, setTipoOperacion] = useState('VENTA') // 'VENTA' | 'DEVOLUCION'
+
+  // ── Listado ───────────────────────────────────────────────────────────────
+  const [ventas, setVentas]             = useState([])
+  const [loadingLista, setLoadingLista] = useState(false)
+  const [pagina, setPagina]             = useState(0)
+  const [hayMas, setHayMas]             = useState(false)
+
+  // ── Locales ───────────────────────────────────────────────────────────────
+  const [locales, setLocales]   = useState([])
+  const [localId, setLocalId]   = useState(null)
+
+  // ── Creación: carrito ─────────────────────────────────────────────────────
+  const [productos, setProductos] = useState([])
+  // productos: [{ _key, tipo, id, label, precio_unitario, cantidad, imei?, numero_serie? }]
+
+
+
+  // ── Creación: 3 formularios independientes ────────────────────────────────
+  const [formAccAbierto, setFormAccAbierto]   = useState(false)
+  const [formAccId, setFormAccId]             = useState(null)
+  const [formAccData, setFormAccData]         = useState(null)
+  const [formAccPrecio, setFormAccPrecio]     = useState('')
+  const [formAccCantidad, setFormAccCantidad] = useState(1)
+
+  const [formCelAbierto, setFormCelAbierto]   = useState(false)
+  const [formCelId, setFormCelId]             = useState(null)
+  const [formCelData, setFormCelData]         = useState(null)
+  const [formCelPrecio, setFormCelPrecio]     = useState('')
+
+  const [formChipAbierto, setFormChipAbierto] = useState(false)
+  const [formChipId, setFormChipId]           = useState(null)
+  const [formChipData, setFormChipData]       = useState(null)
+  const [formChipPrecio, setFormChipPrecio]   = useState('')
+
+  // Opciones de los SearchableSelect via hook compartido
+  const { options, buscadorSelect } = useSelectOptions(['accesorios', 'celulares', 'chips'])
+
+  // ── Creación: pago ────────────────────────────────────────────────────────
+  const [medioPago, setMedioPago]           = useState('efectivo') // 'efectivo' | 'electronico' | 'ambos'
+  const [montoEfectivo, setMontoEfectivo]   = useState('')
+  const [montoElectronico, setMontoElectronico] = useState('')
+
+  // ── Loading confirmar ─────────────────────────────────────────────────────
+  const [loadingConfirmar, setLoadingConfirmar] = useState(false)
+
+  // ── Total derivado (nunca estado) ─────────────────────────────────────────
+  const total = productos.reduce(
+    (acc, p) => acc + p.precio_unitario * p.cantidad, 0
+  )
+
+  const [usuarios, setUsuarios] = useState([])
+  const [usuarioId, setUsuarioId] = useState(null)
+
+  const {modalItem, modalAbierto, loadingModal, abrirModal, cerrarModal} = useModalDetalle(api.getDetallesVenta)
+
+
+  // ─── Efectos ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    fetchUsuarios()
+    fetchLocales()
+    fetchVentas(0)
+  }, [])
+
+  // ─── Usuarios ──────────────────────────────────────────────────────────────
+  const fetchUsuarios = async () => {
+    try {
+      const data = await api.listarUsuarios()
+      setUsuarios(data)
+      if (data.length > 0) setUsuarioId(data[0].usuario_id)
+    } catch (err) {
+      mostrarAlerta('error', `Error al cargar usuarios: ${err.message}`)
+    }
+  }
+
+  // ─── Locales ──────────────────────────────────────────────────────────────
+  const fetchLocales = async () => {
+    try {
+      const data = await api.listarLocales()
+      setLocales(data)
+      if (data.length > 0) setLocalId(data[0].local_id)
+    } catch (err) {
+      mostrarAlerta('error', `Error al cargar locales: ${err.message}`)
+    }
+  }
+
+  // ─── Listado ──────────────────────────────────────────────────────────────
+  const fetchVentas = async (pag) => {
+    setLoadingLista(true)
+    try {
+      const data = await api.listarVentas({ skip: pag * LIMIT, limit: LIMIT + 1 })
+      setHayMas(data.length > LIMIT)
+      setVentas(data.slice(0, LIMIT))
+    } catch (err) {
+      mostrarAlerta('error', `Error al cargar ventas: ${err.message}`)
+    } finally {
+      setLoadingLista(false)
+    }
+  }
+
+  const irAPagina = (nueva) => {
+    setPagina(nueva)
+    fetchVentas(nueva)
+  }
+
+  // ─── Modo creación ────────────────────────────────────────────────────────
+  const abrirCreacion = (tipo) => {
+    setTipoOperacion(tipo)
+    setProductos([])
+    setFormAccAbierto(false); setFormCelAbierto(false); setFormChipAbierto(false)
+    setMedioPago('efectivo')
+    setMontoEfectivo('')
+    setMontoElectronico('')
+    setModo('creacion')
+  }
+
+  const volverAListado = () => {
+    setModo('listado')
+    setFormAccAbierto(false); setFormCelAbierto(false); setFormChipAbierto(false)
+  }
+
+  // ─── Formulario inline de producto ───────────────────────────────────────
+  // ─── Abrir formularios ────────────────────────────────────────────────────
+
+const cerrarTodos = () => {
+  setFormAccAbierto(false)
+  setFormCelAbierto(false)
+  setFormChipAbierto(false)
+}
+
+  const abrirFormAcc = () => {
+    cerrarTodos()
+    setFormAccAbierto(true)
+    setFormAccId(null); setFormAccData(null); setFormAccPrecio(''); setFormAccCantidad(1)
+    buscadorSelect('accesorios', '')
+  }
+  const cerrarFormAcc = () => {
+    setFormAccAbierto(false)
+    setFormAccId(null); setFormAccData(null); setFormAccPrecio(''); setFormAccCantidad(1)
+  }
+
+  const abrirFormCel = () => {
+    cerrarTodos()
+    setFormCelAbierto(true)
+    setFormCelId(null); setFormCelData(null); setFormCelPrecio('')
+    buscadorSelect('chips', '', null, 'DISPONIBLE')
+  }
+  const cerrarFormCel = () => {
+    setFormCelAbierto(false)
+    setFormCelId(null); setFormCelData(null); setFormCelPrecio('')
+  }
+
+  const abrirFormChip = () => {
+    cerrarTodos()
+    setFormChipAbierto(true)
+    setFormChipId(null); setFormChipData(null); setFormChipPrecio('')
+    buscadorSelect('chips', '', null, 'DISPONIBLE')
+  }
+  const cerrarFormChip = () => {
+    setFormChipAbierto(false)
+    setFormChipId(null); setFormChipData(null); setFormChipPrecio('')
+  }
+
+  // ─── Selección en cada SearchableSelect ──────────────────────────────────
+  const handleSeleccionAcc = (id) => {
+    setFormAccId(id)
+    const found = options.accesorios.find(o => o.value === id)
+    setFormAccData(found?._raw ?? null)
+    setFormAccPrecio(found?._raw?.precio ?? '')
+  }
+
+  const handleSeleccionCel = (id) => {
+    setFormCelId(id)
+    const found = options.celulares.find(o => o.value === id)
+    setFormCelData(found?._raw ?? null)
+    setFormCelPrecio(found?._raw?.precio ?? '')
+  }
+
+  const handleSeleccionChip = (id) => {
+    setFormChipId(id)
+    const found = options.chips.find(o => o.value === id)
+    setFormChipData(found?._raw ?? null)
+    setFormChipPrecio(found?._raw?.precio ?? '')
+  }
+
+  // ─── Agregar cada tipo al carrito ─────────────────────────────────────────
+  const handleAgregarAcc = () => {
+    if (!formAccId || !formAccData) { mostrarAlerta('error', 'Seleccioná un accesorio.'); return }
+    const precio   = parseInt(formAccPrecio)
+    const cantidad = parseInt(formAccCantidad)
+    if (!precio || precio <= 0)     { mostrarAlerta('error', 'El precio debe ser mayor a cero.'); return }
+    if (!cantidad || cantidad <= 0) { mostrarAlerta('error', 'La cantidad debe ser mayor a cero.'); return }
+    const existe = productos.find(p => p.tipo === 'accesorio' && p.id === formAccId)
+    if (existe) {
+      setProductos(prev => prev.map(p =>
+        p.tipo === 'accesorio' && p.id === formAccId
+          ? { ...p, cantidad: p.cantidad + cantidad }
+          : p
+      ))
+    } else {
+      setProductos(prev => [...prev, {
+        _key: `acc-${formAccId}`,
+        tipo: 'accesorio',
+        id: formAccId,
+        label: formAccData.nombre,
+        precio_unitario: precio,
+        cantidad,
+      }])
+    }
+    cerrarFormAcc()
+  }
+
+  const handleAgregarCel = () => {
+    if (!formCelId || !formCelData) { mostrarAlerta('error', 'Seleccioná un celular.'); return }
+    const precio = parseInt(formCelPrecio)
+    if (!precio || precio <= 0) { mostrarAlerta('error', 'El precio debe ser mayor a cero.'); return }
+    if (productos.find(p => p.tipo === 'celular' && p.id === formCelId)) {
+      mostrarAlerta('error', 'Este celular ya fue agregado.'); return
+    }
+    setProductos(prev => [...prev, {
+      _key: `cel-${formCelId}`,
+      tipo: 'celular',
+      id: formCelId,
+      label: `IMEI: ${formCelData.imei}`,
+      precio_unitario: precio,
+      cantidad: 1,
+      imei: formCelData.imei,
+    }])
+    cerrarFormCel()
+  }
+
+  const handleAgregarChip = () => {
+    if (!formChipId || !formChipData) { mostrarAlerta('error', 'Seleccioná un chip.'); return }
+    const precio = parseInt(formChipPrecio)
+    if (!precio || precio <= 0) { mostrarAlerta('error', 'El precio debe ser mayor a cero.'); return }
+    if (productos.find(p => p.tipo === 'chip' && p.id === formChipId)) {
+      mostrarAlerta('error', 'Este chip ya fue agregado.'); return
+    }
+    setProductos(prev => [...prev, {
+      _key: `chip-${formChipId}`,
+      tipo: 'chip',
+      id: formChipId,
+      label: `${formChipData.compania} — Serie: ${formChipData.numero_serie}`,
+      precio_unitario: precio,
+      cantidad: 1,
+      numero_serie: formChipData.numero_serie,
+    }])
+    cerrarFormChip()
+  }
+
+  // ─── Editar carrito inline ────────────────────────────────────────────────
+  const handleCantidadCarrito = (key, valor) => {
+    const n = parseInt(valor)
+    if (!n || n <= 0) return
+    setProductos(prev => prev.map(p => p._key === key ? { ...p, cantidad: n } : p))
+  }
+
+  const handlePrecioCarrito = (key, valor) => {
+    const n = parseInt(valor)
+    if (!n || n <= 0) return
+    setProductos(prev => prev.map(p => p._key === key ? { ...p, precio_unitario: n } : p))
+  }
+
+  const handleEliminar = (key) => {
+    setProductos(prev => prev.filter(p => p._key !== key))
+  }
+
+  // ─── Confirmar venta ──────────────────────────────────────────────────────
+  const handleConfirmar = async () => {
+    // Validaciones
+    if (productos.length === 0) {
+      mostrarAlerta('error', 'Agregá al menos un producto.')
+      return
+    }
+    if (total <= 0) {
+      mostrarAlerta('error', 'El total debe ser mayor a cero.')
+      return
+    }
+    if (!localId) {
+      mostrarAlerta('error', 'No hay un local seleccionado.')
+      return
+    }
+    if (rol == 'admin' && !usuarioId) {
+      mostrarAlerta('error', 'No hay usuario seleccionado.')
+      return
+    }
+
+    // Construir pagos
+    let pagos = []
+    if (medioPago === 'efectivo') {
+      pagos = [{ medio_de_pago: 'EFECTIVO', importe: total }]
+    } else if (medioPago === 'electronico') {
+      pagos = [{ medio_de_pago: 'ELECTRONICO', importe: total }]
+    } else {
+      // ambos
+      const ef  = parseInt(montoEfectivo)  || 0
+      const el  = parseInt(montoElectronico) || 0
+      if (ef + el !== total) {
+        mostrarAlerta('error', `La suma de los pagos ($${(ef + el).toLocaleString('es-AR')}) no coincide con el total ($${total.toLocaleString('es-AR')}).`)
+        return
+      }
+      if (ef > 0)  pagos.push({ medio_de_pago: 'EFECTIVO',    importe: ef })
+      if (el > 0)  pagos.push({ medio_de_pago: 'ELECTRONICO', importe: el })
+    }
+
+    // Construir payload
+    const payload = {
+      local_id:   localId,
+      tipo:       tipoOperacion,
+      pagos,
+      detalles_accesorios: productos
+        .filter(p => p.tipo === 'accesorio')
+        .map(p => ({ accesorio_id: p.id, precio_unitario: p.precio_unitario, cantidad: p.cantidad })),
+      detalles_celulares: productos
+        .filter(p => p.tipo === 'celular')
+        .map(p => ({ celular_id: p.id, imei: p.imei, precio_unitario: p.precio_unitario })),
+      detalles_chips: productos
+        .filter(p => p.tipo === 'chip')
+        .map(p => ({ chip_id: p.id, numero_serie: p.numero_serie, precio_unitario: p.precio_unitario })),
+       ...(rol === 'admin' && { usuario_id: usuarioId }) // si es admin el usuario es seleccionado
+    }
+
+    setLoadingConfirmar(true)
+    try {
+      await api.crearVenta(payload)
+      mostrarAlerta('success', tipoOperacion === 'VENTA' ? 'Venta registrada correctamente.' : 'Devolución registrada correctamente.')
+      setPagina(0)
+      fetchVentas(0)
+      volverAListado()
+    } catch (err) {
+      mostrarAlerta('error', `Error: ${err.message}`)
+    } finally {
+      setLoadingConfirmar(false)
+    }
+  }
+
+  // ─── RENDER ───────────────────────────────────────────────────────────────
+  return (
+    <div className="page-container">
+
+      {/* ── Header ── */}
+      <div className="page-header">
+        <h2>
+          {modo === 'listado'  && 'Ventas'}
+          {modo === 'creacion' && tipoOperacion === 'VENTA'      && 'Nueva venta'}
+          {modo === 'creacion' && tipoOperacion === 'DEVOLUCION' && 'Nueva devolución'}
+        </h2>
+        {modo === 'listado' && (
+          <div className="page-header-acciones">
+            <button className="btn btn-primary"   onClick={() => abrirCreacion('VENTA')}>+ Nueva venta</button>
+            <button className="btn btn-devolucion" onClick={() => abrirCreacion('DEVOLUCION')}>↩ Nueva devolución</button>
+          </div>
+        )}
+        {modo === 'creacion' && (
+          <button className="btn btn-secondary" onClick={volverAListado} disabled={loadingConfirmar}>
+            ← Volver
+          </button>
+        )}
+      </div>
+
+      {alerta && <div className={`alerta alerta-${alerta.tipo}`}>{alerta.msg}</div>}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          MODO CREACIÓN
+      ══════════════════════════════════════════════════════════════════════ */}
+      {modo === 'creacion' && (
+        <>
+          {/* ── Local ── */}
+          
+          <div className="form-card">
+            <div className='form-row'>
+              <div className="form-group" style={{ maxWidth: 280 }}>
+                <label>Local</label>
+                <select value={localId ?? ''} onChange={e => setLocalId(parseInt(e.target.value))}>
+                  {locales.map(l => (
+                    <option key={l.local_id} value={l.local_id}>{l.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* {Cuando el value del <select> no coincide con ninguna opción, el navegador:
+                   selecciona automáticamente la primera opción disponible } */}
+              {rol === 'admin' && 
+              <div className='form-group'>
+                <label>Vendedor</label>
+                <select value={usuarioId ?? ''} onChange={e => setUsuarioId(parseInt(e.target.value))}>
+                  {usuarios.map(l => (
+                    <option key={l.usuario_id} value={l.usuario_id}>{l.nombre}</option>
+                  ))}
+                </select>
+              </div>}
+            </div>
+          </div>
+          
+
+          {/* ── 3 Botones siempre visibles ── */}
+          <div className="venta-agregar-btns">
+            <button className="btn btn-secondary" onClick={formAccAbierto  ? cerrarFormAcc  : abrirFormAcc}>
+              {formAccAbierto  ? '✕ Accesorio' : '+ Accesorio'}
+            </button>
+            <button className="btn btn-secondary" onClick={formCelAbierto  ? cerrarFormCel  : abrirFormCel}>
+              {formCelAbierto  ? '✕ Celular'   : '+ Celular'}
+            </button>
+            <button className="btn btn-secondary" onClick={formChipAbierto ? cerrarFormChip : abrirFormChip}>
+              {formChipAbierto ? '✕ Chip'      : '+ Chip'}
+            </button>
+          </div>
+
+          {/* ── Formulario Accesorio ── */}
+          {formAccAbierto && (
+            <div className="form-card">
+              <h3>Agregar accesorio</h3>
+              <div className="form-row">
+                <div className="form-group" style={{ flex: 2 }}>
+                  <label>Accesorio *</label>
+                  <SearchableSelect
+                    options={options.accesorios}
+                    value={formAccId}
+                    onChange={handleSeleccionAcc}
+                    onSearch={(t) => buscadorSelect('accesorios', t)}
+                    placeholder="Buscar por nombre..."
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Precio unitario *</label>
+                  <input
+                    type="number" min={1}
+                    value={formAccPrecio}
+                    onChange={e => setFormAccPrecio(e.target.value)}
+                    placeholder="$"
+                  />
+                </div>
+                <div className="form-group" style={{ maxWidth: 90 }}>
+                  <label>Cantidad *</label>
+                  <input
+                    type="number" min={1}
+                    value={formAccCantidad}
+                    onChange={e => setFormAccCantidad(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="form-actions">
+                <button className="btn btn-secondary" onClick={cerrarFormAcc}>Cancelar</button>
+                <button className="btn btn-primary"   onClick={handleAgregarAcc}>Agregar</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Formulario Celular ── */}
+          {formCelAbierto && (
+            <div className="form-card">
+              <h3>Agregar celular</h3>
+              <div className="form-row">
+                <div className="form-group" style={{ flex: 2 }}>
+                  <label>Celular (IMEI) *</label>
+                  <SearchableSelect
+                    options={options.celulares}
+                    value={formCelId}
+                    onChange={handleSeleccionCel}
+                    onSearch={(t) => buscadorSelect('celulares', t, null, 'DISPONIBLE')}
+                    placeholder="Buscar por IMEI..."
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Precio unitario *</label>
+                  <input
+                    type="number" min={1}
+                    value={formCelPrecio}
+                    onChange={e => setFormCelPrecio(e.target.value)}
+                    placeholder="$"
+                  />
+                </div>
+              </div>
+              <div className="form-actions">
+                <button className="btn btn-secondary" onClick={cerrarFormCel}>Cancelar</button>
+                <button className="btn btn-primary"   onClick={handleAgregarCel}>Agregar</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Formulario Chip ── */}
+          {formChipAbierto && (
+            <div className="form-card">
+              <h3>Agregar chip</h3>
+              <div className="form-row">
+                <div className="form-group" style={{ flex: 2 }}>
+                  <label>Chip (N° de serie) *</label>
+                  <SearchableSelect
+                    options={options.chips}
+                    value={formChipId}
+                    onChange={handleSeleccionChip}
+                    onSearch={(t) => buscadorSelect('chips', t, null, 'DISPONIBLE')}
+                    placeholder="Buscar por número de serie..."
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Precio unitario *</label>
+                  <input
+                    type="number" min={1}
+                    value={formChipPrecio}
+                    onChange={e => setFormChipPrecio(e.target.value)}
+                    placeholder="$"
+                  />
+                </div>
+              </div>
+              <div className="form-actions">
+                <button className="btn btn-secondary" onClick={cerrarFormChip}>Cancelar</button>
+                <button className="btn btn-primary"   onClick={handleAgregarChip}>Agregar</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Tabla carrito ── */}
+          {productos.length > 0 && (
+            <div className="form-card">
+              <h3>Productos</h3>
+              <div className="table-wrapper">
+                <table className="acc-table">
+                  <thead>
+                    <tr>
+                      <th>Tipo</th>
+                      <th>Producto</th>
+                      <th>Cant.</th>
+                      <th>Precio unit.</th>
+                      <th>Subtotal</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productos.map(p => (
+                      <tr key={p._key}>
+                        <td><span className={`tipo-badge tipo-${p.tipo}`}>{p.tipo}</span></td>
+                        <td>{p.label}</td>
+                        <td>
+                          {p.tipo === 'accesorio' ? (
+                            <input
+                              className="input-carrito"
+                              type="number"
+                              min={1}
+                              value={p.cantidad}
+                              onChange={e => handleCantidadCarrito(p._key, e.target.value)}
+                            />
+                          ) : (
+                            <span>1</span>
+                          )}
+                        </td>
+                        <td>
+                          <input
+                            className="input-carrito"
+                            type="number"
+                            min={1}
+                            value={p.precio_unitario}
+                            onChange={e => handlePrecioCarrito(p._key, e.target.value)}
+                          />
+                        </td>
+                        <td>{formatPrecio(p.precio_unitario * p.cantidad)}</td>
+                        <td>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => handleEliminar(p._key)}
+                          >
+                            Eliminar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Total */}
+              <div className="venta-total">
+                <span>Total</span>
+                <strong>{formatPrecio(total)}</strong>
+              </div>
+            </div>
+          )}
+
+          {/* ── Medio de pago ── */}
+          {productos.length > 0 && (
+            <div className="form-card">
+              <h3>Medio de pago</h3>
+              <div className="form-row">
+                <div className="form-group" style={{ maxWidth: 200 }}>
+                  <label>Medio</label>
+                  <select value={medioPago} onChange={e => setMedioPago(e.target.value)}>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="electronico">Electrónico</option>
+                    <option value="ambos">Ambos</option>
+                  </select>
+                </div>
+
+                {medioPago === 'ambos' && (
+                  <>
+                    <div className="form-group">
+                      <label>Monto efectivo</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={montoEfectivo}
+                        onChange={e => setMontoEfectivo(e.target.value)}
+                        placeholder="$"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Monto electrónico</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={montoElectronico}
+                        onChange={e => setMontoElectronico(e.target.value)}
+                        placeholder="$"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Indicador de suma si es ambos */}
+              {medioPago === 'ambos' && (
+                (() => {
+                  const ef = parseInt(montoEfectivo)  || 0
+                  const el = parseInt(montoElectronico) || 0
+                  const suma = ef + el
+                  const ok = suma === total
+                  return (
+                    <p className={`venta-pago-hint ${ok ? 'hint-ok' : 'hint-error'}`}>
+                      Suma de pagos: {formatPrecio(suma)} / Total: {formatPrecio(total)}
+                      {ok ? ' ✓' : ' — no coincide'}
+                    </p>
+                  )
+                })()
+              )}
+
+              <div className="form-actions" style={{ marginTop: 16 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleConfirmar}
+                  disabled={loadingConfirmar || productos.length === 0}
+                >
+                  {loadingConfirmar
+                    ? 'Registrando...'
+                    : tipoOperacion === 'VENTA' ? 'Confirmar venta' : 'Confirmar devolución'}
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          MODO LISTADO
+      ══════════════════════════════════════════════════════════════════════ */}
+      {modo === 'listado' && (
+        <>
+          {loadingLista ? (
+            <p className="empty-msg">Cargando...</p>
+          ) : ventas.length === 0 ? (
+            <p className="empty-msg">No hay ventas registradas.</p>
+          ) : (
+            <>
+              <div className="table-wrapper">
+                <table className="acc-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Fecha</th>
+                      <th>Tipo</th>
+                      <th>Pagos</th>
+                      <th>Total</th>
+                      <th>Detalles</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ventas.map(v => (
+                      <tr key={v.venta_id} className={v.tipo === 'DEVOLUCION' ? 'row-devolucion' : ''}>
+                        <td>{v.venta_id}</td>
+                        <td>{formatFecha(v.fecha_ingreso)}</td>
+                        <td>
+                          <span className={`tipo-badge tipo-${v.tipo.toLowerCase()}`}>
+                            {v.tipo}
+                          </span>
+                        </td>
+                        <td className="venta-pagos-cell">
+                          {v.pagos.map((p, i) => (
+                            <span key={i} className="pago-badge">
+                              {p.medio_de_pago}: {formatPrecio(p.importe)}
+                            </span>
+                          ))}
+                        </td>
+                        <td><strong>{formatPrecio(v.monto_total)}</strong></td>
+                        <td><button 
+                            className='btn-ver-detalle' 
+                            onClick={() => abrirModal(v.venta_id)} 
+                            disabled={loadingModal}
+                          >
+                            {loadingModal ? "Cargando..." : "Ver detalle"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="paginacion">
+                <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina - 1)} disabled={pagina === 0}>← Anterior</button>
+                <span className="pagina-info">Página {pagina + 1}</span>
+                <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina + 1)} disabled={!hayMas}>Siguiente →</button>
+              </div>
+
+              {/* el modal, fuera de la tabla */}
+              {modalAbierto && (
+                <ModalDetalle
+                  detalles={modalItem}
+                  admin={rol === 'admin' ? true : false}
+                  onClose={cerrarModal}
+                />
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
