@@ -70,32 +70,37 @@ export const api = {
     authFetch(`${BASE_URL}/detalles/venta/${ventaId}`).then(handleResponse),
 
   // LISTADOS
-  listarAccesorios: ({ skip = 0, limit = LIMIT, buscar = '', tipo_id = null, subtipo_id = null, activo = true } = {}) =>
-    authFetch(`${BASE_URL}/accesorios/?${buildParams({ skip, limit, buscar, tipo_id, subtipo_id, activo })}`).then(handleResponse),
+  listarAccesorios: ({ skip = 0, limit = LIMIT, buscar = '', tipo_id = null, subtipo_id = null, marca_celular_id = null, modelo_celular_id = null, activo = true } = {}) =>
+    authFetch(`${BASE_URL}/accesorios/?${buildParams({ skip, limit, buscar, tipo_id, subtipo_id, marca_celular_id, modelo_celular_id, activo })}`).then(handleResponse),
 
-  listarTipos: ({ buscar = '' } = {}) =>
-    authFetch(`${BASE_URL}/tipos-accesorios/?${buildParams({ limit: 100, buscar })}`).then(handleResponse),
+  listarTipos: ({ buscar = '', activo = true } = {}) =>
+    authFetch(`${BASE_URL}/tipos-accesorios/?${buildParams({ limit: 100, buscar, activo })}`).then(handleResponse),
 
-  listarSubtipos: ({ tipo_id = null, buscar = '' } = {}) =>
-    authFetch(`${BASE_URL}/subtipos-accesorios/?${buildParams({ limit: 100, tipo_id, buscar })}`).then(handleResponse),
+  listarSubtipos: ({ tipo_id = null, buscar = '', activo = true } = {}) =>
+    authFetch(`${BASE_URL}/subtipos-accesorios/?${buildParams({ limit: 100, tipo_id, buscar, activo })}`).then(handleResponse),
 
-  listarMarcas: ({ buscar = '' } = {}) =>
-    authFetch(`${BASE_URL}/marcas/?${buildParams({ limit: 100, buscar })}`).then(handleResponse),
+  listarMarcas: ({ buscar = '', activo = true } = {}) =>
+    authFetch(`${BASE_URL}/marcas/?${buildParams({ limit: 100, buscar, activo })}`).then(handleResponse),
 
-  listarModelos: ({ buscar = '' } = {}) =>
-    authFetch(`${BASE_URL}/modelos-celulares/?${buildParams({ limit: 100, buscar })}`).then(handleResponse),
+  listarMarcasCelulares: ({ buscar = '', activo = true } = {}) =>
+    authFetch(`${BASE_URL}/marcas-celulares/?${buildParams({ limit: 100, buscar, activo })}`).then(handleResponse),
+
+  listarModelos: ({ buscar = '', marca_celular_id = null, activo = true } = {}) =>
+  authFetch(`${BASE_URL}/modelos-celulares/?${buildParams({ limit: 100, buscar, marca_celular_id , activo})}`).then(handleResponse),
 
   listarStock: ({ skip = 0, limit = LIMIT, buscar = '', tipo_id = null, subtipo_id = null, local_id = null, activo = true } = {}) =>
     authFetch(`${BASE_URL}/stock/?${buildParams({ skip, limit, buscar, tipo_id, subtipo_id, local_id, activo })}`).then(handleResponse),
 
-  listarLocales: () =>
-    authFetch(`${BASE_URL}/locales/`).then(handleResponse),
+  listarLocales: ({ activo, tipo } = {}) => {
+      const query = buildParams({ activo, tipo });
+      return authFetch(`${BASE_URL}/locales/${query ? `?${query}` : ""}`).then(handleResponse);
+  },
 
   listarComisiones: () =>
     authFetch(`${BASE_URL}/comisiones/`).then(handleResponse),
 
-  listarCelulares: ({ skip = 0, limit = LIMIT, local_id = null, estado = null, imei = '', marca = null } = {}) =>
-    authFetch(`${BASE_URL}/celulares/?${buildParams({ skip, limit, local_id, estado, imei, marca })}`).then(handleResponse),
+  listarCelulares: ({ skip = 0, limit = LIMIT, local_id = null, estado = null, imei = '', marca_celular_id = null, modelo_celular_id = null } = {}) =>
+    authFetch(`${BASE_URL}/celulares/?${buildParams({ skip, limit, local_id, estado, imei, marca_celular_id, modelo_celular_id })}`).then(handleResponse),
 
   listarChips: ({ skip = 0, limit = LIMIT, local_id = null, estado = null, compania = null, buscar = null } = {}) =>
     authFetch(`${BASE_URL}/chips/?${buildParams({ skip, limit, local_id, estado, compania, buscar })}`).then(handleResponse),
@@ -260,9 +265,6 @@ export const api = {
     authFetch(`${BASE_URL}/chips/${id}`, { method: 'DELETE' }).then(handleResponse),
 
   // CELULARES
-  listarMarcasCelulares: () =>
-    authFetch(`${BASE_URL}/celulares/marcas/disponibles`).then(handleResponse),
-
   crearCelular: (body) =>
     authFetch(`${BASE_URL}/celulares/`, {
       method: 'POST',
@@ -339,6 +341,24 @@ export const api = {
     authFetch(`${BASE_URL}/modelos-celulares/${id}`, {
       method: 'DELETE',
     }).then(handleResponse),
+
+  // MARCAS CELULARES
+  crearMarcaCelular: (body) =>
+  authFetch(`${BASE_URL}/marcas-celulares/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(handleResponse),
+
+  actualizarMarcaCelular: (id, body) =>
+    authFetch(`${BASE_URL}/marcas-celulares/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  eliminarMarcaCelular: (id) =>
+    authFetch(`${BASE_URL}/marcas-celulares/${id}`, { method: 'DELETE' }).then(handleResponse),
 
   // MARCAS
   crearMarca: (body) =>

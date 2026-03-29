@@ -14,5 +14,6 @@ __all__ = [
     "StockAccesorioUpdate",
     "ReparacionUpdate",
     "MarcaUpdate",
-    "ConfigComisionUpdate"
+    "ConfigComisionUpdate",
+    "MarcaCelularUpdate",
 ]

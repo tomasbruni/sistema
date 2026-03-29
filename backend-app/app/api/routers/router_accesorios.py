@@ -5,7 +5,7 @@ from typing import Optional
 from sqlmodel import Session, SQLModel, select, col
 from sqlalchemy import exc
 
-from app.db.session import get_session, SessionDep
+from app.db.session import get_session
 from app.db.models import *
 
 from app.api.modelscreate import *
@@ -20,8 +20,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 router = APIRouter(prefix="/accesorios",
                    tags=["ACCESORIOS"],
-                   #dependencies=[Depends(require_admin)],
-                   responses = {404:{"message":"No encontrado"}})
+                   responses={404: {"message": "No encontrado"}})
 
 
 @router.get("/export")
@@ -44,7 +43,6 @@ def exportar_accesorios(
 
     accesorios = session.exec(statement).all()
 
-    # ── Crear Excel ───────────────────────────────────────────────────────────
     wb = Workbook()
     ws = wb.active
     ws.title = "Accesorios"  # type: ignore
@@ -53,7 +51,7 @@ def exportar_accesorios(
     header_fill  = PatternFill(fill_type="solid", fgColor="1A1A2E")
     header_align = Alignment(horizontal="center")
 
-    columnas = ["ID", "SKU", "Nombre", "Tipo ID", "Subtipo ID", "Precio", "Activo"]
+    columnas = ["ID", "SKU", "Nombre", "Tipo ID", "Subtipo ID", "Marca Celular ID", "Modelo Celular ID", "Precio", "Activo"]
     for col_idx, titulo in enumerate(columnas, start=1):
         cell = ws.cell(row=1, column=col_idx, value=titulo)  # type: ignore
         cell.font      = header_font
@@ -67,11 +65,13 @@ def exportar_accesorios(
             a.nombre,
             a.tipo_id,
             a.subtipo_id,
+            a.marca_celular_id,
+            a.modelo_celular_id,
             a.precio,
             a.activo,
         ])
 
-    anchos = {"A": 8, "B": 14, "C": 40, "D": 10, "E": 12, "F": 12, "G": 10}
+    anchos = {"A": 8, "B": 14, "C": 40, "D": 10, "E": 12, "F": 16, "G": 18, "H": 12, "I": 10}
     for col_letra, ancho in anchos.items():
         ws.column_dimensions[col_letra].width = ancho  # type: ignore
 
@@ -85,24 +85,21 @@ def exportar_accesorios(
         headers={"Content-Disposition": "attachment; filename=accesorios.xlsx"}
     )
 
-@router.post("/sugerir-nombre")
-def sugerir_nombre_accesorio(
-    data: AccesorioCreate,
-    session: Session = Depends(get_session)
-):
-    """
-    Genera sugerencia de nombre para pre-completar en formulario.
-    El usuario puede modificarlo para agregar detalles.
-    """
-    nombre_base = generar_nombre_accesorio(
-        tipo_id=data.tipo_id,
-        session=session,
-        subtipo_id=data.subtipo_id,
-        marca_id=data.marca_id,
-        modelo_id=data.modelo_id
-    )
-    
-    return {"nombre_sugerido": nombre_base}
+
+# @router.post("/sugerir-nombre")
+# def sugerir_nombre_accesorio(
+#     data: AccesorioCreate,
+#     session: Session = Depends(get_session)
+# ):
+#     nombre_base = generar_nombre_accesorio(
+#         tipo_id=data.tipo_id,
+#         session=session,
+#         subtipo_id=data.subtipo_id,
+#         marca_id=data.marca_id,
+#         marca_celular_id=data.marca_celular_id,
+#         modelo_celular_id=data.modelo_celular_id
+#     )
+#     return {"nombre_sugerido": nombre_base}
 
 
 @router.post("/verificar-duplicado")
@@ -110,59 +107,39 @@ def verificar_duplicado(
     data: AccesorioCreate,
     session: Session = Depends(get_session)
 ):
-    """
-    Verifica si ya existe un accesorio similar.
-    Retorna información del duplicado si existe.
-    """
-    # SI ESTOY AGREGANDO FUNDA: 
-        # HAY UNIQUE CONSTRAINT NOMBRE-TIPO-MODELO PARA CELULARES
-    # Buscar productos idénticos (sin precio)
-    #PRODUCTO IGUAL SIGNIFICARIA:
-        # MISMO NOMBRE, TIPO
-        # Y EXACTAMENTE IGUAL SIGNIFICARIA MISMO NOMBRE, TIPO, PRECIO 
     statement = select(Accesorio).where(
-        #Accesorio.nombre == data.nombre, #type: ignore, quiero avisar al usuario
-        #que existe un accesorio con las mismas caracteristicas, por si quiere
-        #agregar un accesorio y se olvido que habia agregado con otro nombre
         Accesorio.nombre  == data.nombre,
-        Accesorio.tipo_id == data.tipo_id, #type: ignore
-        Accesorio.activo == True # type: ignore
+        Accesorio.tipo_id == data.tipo_id,  # type: ignore
+        Accesorio.activo  == True           # type: ignore
     )
-    
-    # Agregar filtros opcionales
-    # los else son para que se comparen tambien los campos donde hay NULL
-    # osea se compara si el accesorio es exactamente igual
+
     if data.subtipo_id:
         statement = statement.where(Accesorio.subtipo_id == data.subtipo_id)
     else:
         statement = statement.where(Accesorio.subtipo_id == None)
-    
-    if data.modelo_id:
-        statement = statement.where(Accesorio.modelo_id == data.modelo_id)
+
+    if data.marca_celular_id:
+        statement = statement.where(Accesorio.marca_celular_id == data.marca_celular_id)
     else:
-        statement = statement.where(Accesorio.modelo_id == None)
-    
+        statement = statement.where(Accesorio.marca_celular_id == None)
+
+    if data.modelo_celular_id:
+        statement = statement.where(Accesorio.modelo_celular_id == data.modelo_celular_id)
+    else:
+        statement = statement.where(Accesorio.modelo_celular_id == None)
+
     if data.marca_id:
         statement = statement.where(Accesorio.marca_id == data.marca_id)
     else:
         statement = statement.where(Accesorio.marca_id == None)
-    
-    # Buscar todos los similares
+
     similares = session.exec(statement).all()
-    
+
     if not similares:
-        return {
-            "tiene_duplicados": False,
-            "duplicados": []
-        }
-    
-    # Verificar si hay uno con el MISMO precio (duplicado exacto)
-    duplicado_exacto = None
-    for similar in similares:
-        if similar.precio == data.precio:
-            duplicado_exacto = similar # booleano global que indica si hay algun duplicado exacto
-            break
-    
+        return {"tiene_duplicados": False, "duplicados": []}
+
+    duplicado_exacto = next((s for s in similares if s.precio == data.precio), None)
+
     return {
         "tiene_duplicados": True,
         "es_duplicado_exacto": duplicado_exacto is not None,
@@ -184,80 +161,65 @@ def crear_accesorio(
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(require_admin)
 ):
-    """Crea un nuevo accesorio con SKU generado automáticamente"""
-
-    if accesorio_data.marca_id and accesorio_data.modelo_id:
+    # No se puede especificar marca_celular sola sin modelo, ni modelo sin marca_celular
+    if accesorio_data.modelo_celular_id and not accesorio_data.marca_celular_id:
         raise HTTPException(
             status_code=400,
-            detail="No se puede especificar marca y modelo al mismo tiempo"
+            detail="Si se especifica un modelo de celular, se debe especificar también la marca"
         )
+
+    # Validar que el modelo pertenece a la marca si ambos vienen
+    if accesorio_data.marca_celular_id and accesorio_data.modelo_celular_id:
+        modelo = session.get(ModeloCelular, accesorio_data.modelo_celular_id)
+        if not modelo:
+            raise HTTPException(status_code=404, detail="Modelo de celular no encontrado")
+        if modelo.marca_celular_id != accesorio_data.marca_celular_id:
+            raise HTTPException(status_code=400, detail="El modelo no pertenece a la marca indicada")
 
     try:
         locales = session.exec(select(Local)).all()
-
         if not locales:
-            raise HTTPException (
-                status_code=400,
-                detail= "No hay locales"
-            )
+            raise HTTPException(status_code=400, detail="No hay locales")
 
         sku = generar_sku_accesorio(
             tipo_id=accesorio_data.tipo_id,
             session=session,
             subtipo_id=accesorio_data.subtipo_id,
             marca_id=accesorio_data.marca_id,
-            modelo_id=accesorio_data.modelo_id
+            marca_celular_id=accesorio_data.marca_celular_id,
+            modelo_celular_id=accesorio_data.modelo_celular_id
         )
 
-        accesorio = Accesorio(
-            **accesorio_data.model_dump(),
-            sku=sku
-        )
-
+        accesorio = Accesorio(**accesorio_data.model_dump(), sku=sku)
         session.add(accesorio)
-        session.flush()  # obtenemos accesorio_id sin commit
-
+        session.flush()
 
         lista_stocks = [
             StockAccesorio(
-                accesorio_id=accesorio.accesorio_id, #type: ignore
-                local_id=local.local_id, #type: ignore
+                accesorio_id=accesorio.accesorio_id,  # type: ignore
+                local_id=local.local_id,              # type: ignore
                 cantidad=0
             )
             for local in locales
         ]
-
         session.add_all(lista_stocks)
-
         session.commit()
-
         session.refresh(accesorio)
         for stock in lista_stocks:
             session.refresh(stock)
 
-        return {
-            "accesorio": accesorio,
-            "lista-stocks": lista_stocks
-        }
+        return {"accesorio": accesorio, "lista-stocks": lista_stocks}
 
     except ValueError as e:
         session.rollback()
         raise HTTPException(status_code=400, detail=str(e))
-
     except exc.IntegrityError as e:
         session.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail=str(e.orig)
-        )
-
+        raise HTTPException(status_code=400, detail=str(e.orig))
     except Exception as e:
         session.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al crear accesorio: {str(e)}"
-        )
-    
+        raise HTTPException(status_code=500, detail=f"Error al crear accesorio: {str(e)}")
+
 
 @router.get("/{accesorio_id}")
 def obtener_accesorio(
@@ -265,47 +227,56 @@ def obtener_accesorio(
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(get_current_user)
 ):
-    """Obtiene accesorio - incluye SKU en respuesta"""
     accesorio = session.get(Accesorio, accesorio_id)
     if not accesorio:
         raise HTTPException(status_code=404, detail="Accesorio no encontrado")
     return accesorio
 
-#actualizacion
+
 @router.patch("/{accesorio_id}")
 def actualizar_accesorio(
     accesorio_id: int,
-    accesorio_data: AccesorioUpdate,  # ← SIN sku
+    accesorio_data: AccesorioUpdate,
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(require_admin)
 ):
-    """Actualiza accesorio - NO permite cambiar SKU"""
     accesorio = session.get(Accesorio, accesorio_id)
     if not accesorio:
         raise HTTPException(status_code=404, detail="Accesorio no encontrado")
-    
+
     try:
-        # Actualizar solo los campos permitidos
-        for key, value in accesorio_data.model_dump(exclude_unset=True).items():
+        update_data = accesorio_data.model_dump(exclude_unset=True)
+
+        # Validar consistencia marca/modelo si alguno de los dos viene en el update
+        marca_celular_id = update_data.get("marca_celular_id", accesorio.marca_celular_id)
+        modelo_celular_id = update_data.get("modelo_celular_id", accesorio.modelo_celular_id)
+
+        if modelo_celular_id and not marca_celular_id:
+            raise HTTPException(status_code=400, detail="Si se especifica un modelo, se debe especificar también la marca")
+
+        if marca_celular_id and modelo_celular_id:
+            modelo = session.get(ModeloCelular, modelo_celular_id)
+            if not modelo:
+                raise HTTPException(status_code=404, detail="Modelo de celular no encontrado")
+            if modelo.marca_celular_id != marca_celular_id:
+                raise HTTPException(status_code=400, detail="El modelo no pertenece a la marca indicada")
+
+        for key, value in update_data.items():
             setattr(accesorio, key, value)
-        
-        # SKU NO cambia
-        #update de accesorio
+
         session.add(accesorio)
         session.commit()
         session.refresh(accesorio)
-        
         return accesorio
-    
-    except exc.IntegrityError as e:
+
+    except HTTPException:
         session.rollback()
-        # Mensaje genérico pero útil
+        raise
+    except exc.IntegrityError:
+        session.rollback()
         raise HTTPException(
             status_code=400,
-            detail=(
-                "No se pudo actualizar el accesorio. "
-                "Verifique que los campos seleccionados existan."
-            )
+            detail="No se pudo actualizar el accesorio. Verifique que los campos seleccionados existan."
         )
 
 
@@ -316,33 +287,28 @@ def listar_accesorios(
     buscar: Optional[str] = "",
     tipo_id: Optional[int] = None,
     subtipo_id: Optional[int] = None,
+    marca_celular_id: Optional[int] = None,
+    modelo_celular_id: Optional[int] = None,
     activo: Optional[bool] = True,
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(get_current_user)
 ):
-    """Lista accesorios - incluye SKU en respuesta"""
-    
     statement = select(Accesorio).offset(skip).limit(limit)
 
-    if not activo:
-        statement = statement.where(Accesorio.activo == False)
-
-    if activo:
-        statement = statement.where(Accesorio.activo == True)
-
+    if activo is not None:
+        statement = statement.where(Accesorio.activo == activo)
     if buscar:
-        statement = statement.where(
-            Accesorio.nombre.ilike(f"%{buscar}%")  # type: ignore
-        )
-
+        statement = statement.where(Accesorio.nombre.ilike(f"%{buscar}%"))  # type: ignore
     if tipo_id is not None:
         statement = statement.where(Accesorio.tipo_id == tipo_id)
-
     if subtipo_id is not None:
         statement = statement.where(Accesorio.subtipo_id == subtipo_id)
+    if marca_celular_id is not None:
+        statement = statement.where(Accesorio.marca_celular_id == marca_celular_id)
+    if modelo_celular_id is not None:
+        statement = statement.where(Accesorio.modelo_celular_id == modelo_celular_id)
 
-    accesorios = session.exec(statement).all()
-    return accesorios
+    return session.exec(statement).all()
 
 
 @router.delete("/{accesorio_id}")
@@ -352,30 +318,23 @@ def eliminar_accesorio(
     current_user: UsuarioActual = Depends(require_admin)
 ):
     """
-    Elimina físicamente un accesorio si nunca tuvo ventas ni movimientos.
+    Elimina físicamente si nunca tuvo ventas ni movimientos.
     Si tiene ventas o movimientos, lo desactiva.
     """
     try:
         accesorio = session.get(Accesorio, accesorio_id)
-
         if not accesorio:
             raise HTTPException(status_code=404, detail="Accesorio no encontrado")
 
-        # Verificar ventas asociadas (si tiene ventas => tiene movimientos, medio al pedo)
         tiene_ventas = session.exec(
-            select(DetalleVentaAccesorio)
-            .where(DetalleVentaAccesorio.accesorio_id == accesorio_id)
+            select(DetalleVentaAccesorio).where(DetalleVentaAccesorio.accesorio_id == accesorio_id)
         ).first() is not None
 
-    
-        # Verificar movimientos de stock
         tiene_movimientos = session.exec(
-            select(MovimientoStock)
-            .where(MovimientoStock.accesorio_id == accesorio_id)
+            select(MovimientoStock).where(MovimientoStock.accesorio_id == accesorio_id)
         ).first() is not None
 
         if tiene_ventas or tiene_movimientos:
-            # Si tiene ventas o movimientos → desactivar
             accesorio.activo = False
             session.commit()
 
@@ -393,22 +352,13 @@ def eliminar_accesorio(
             }
 
         else:
-            # Borrar primero el stock asociado
             stocks = session.exec(
-                select(StockAccesorio)
-                .where(StockAccesorio.accesorio_id == accesorio_id) #
+                select(StockAccesorio).where(StockAccesorio.accesorio_id == accesorio_id)
             ).all()
-
-            #borra por primary key
             for stock in stocks:
                 session.delete(stock)
-
-            # fuerza a ejecutar estos DELETE antes de continuar
             session.flush()
-
-            # Luego borrar el accesorio
             session.delete(accesorio)
-
             session.commit()
 
             return {
@@ -419,10 +369,6 @@ def eliminar_accesorio(
 
     except HTTPException:
         raise
-
     except Exception as e:
         session.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al eliminar accesorio: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error al eliminar accesorio: {str(e)}")

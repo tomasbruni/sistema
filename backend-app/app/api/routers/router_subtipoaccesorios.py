@@ -97,37 +97,28 @@ def actualizar_subtipo_accesorio(
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(require_admin)
 ):
-    """Actualiza un subtipo"""
     subtipo = session.get(SubtipoAccesorio, subtipo_id)
     if not subtipo:
         raise HTTPException(status_code=404, detail="Subtipo no encontrado")
-    
-    if subtipo_act.nombre is None and subtipo_act.tipo_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Debe proporcionar 'nombre' o 'tipo_id' para actualizar"
-        )
-    
+
+    update_data = subtipo_act.model_dump(exclude_unset=True)
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Debe proporcionar al menos un campo para actualizar")
+
     try:
-        if subtipo_act.nombre is not None:
-            subtipo.nombre = subtipo_act.nombre
-        if subtipo_act.tipo_id is not None:
-            subtipo.tipo_id = subtipo_act.tipo_id
-        
+        for key, value in update_data.items():
+            setattr(subtipo, key, value)
+
         session.add(subtipo)
         session.commit()
         session.refresh(subtipo)
         return subtipo
-        
-    except exc.IntegrityError as e:
+    except exc.IntegrityError:
         session.rollback()
-        # Mensaje genérico pero útil
         raise HTTPException(
             status_code=400,
-            detail=(
-                "No se pudo crear el subtipo. "
-                "Verifique que el nombre no esté duplicado y que el tipo seleccionado exista."
-            )
+            detail="No se pudo actualizar el subtipo. Verifique que el nombre no esté duplicado y que el tipo seleccionado exista."
         )
         
 

@@ -3,11 +3,11 @@ import { api } from '../../api/api'
 import useCrudSeccion from '../../hooks/useCrudSeccion'
 import SeccionBase from './SeccionBase'
 
-export default function SeccionTipos({ mostrarAlerta }) {
+export default function SeccionMarcasCelulares({ mostrarAlerta }) {
   const [filtroActivo, setFiltroActivo] = useState(true)
 
   const fetchFn = useCallback(
-    (t) => api.listarTipos({ buscar: t, activo: filtroActivo }),
+    (t) => api.listarMarcasCelulares({ buscar: t, activo: filtroActivo }),
     [filtroActivo]
   )
   const crud = useCrudSeccion(fetchFn, { nombre: '' })
@@ -17,12 +17,13 @@ export default function SeccionTipos({ mostrarAlerta }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
+      const body = { nombre: crud.form.nombre }
       if (crud.editandoId) {
-        await api.actualizarTipo(crud.editandoId, { nombre: crud.form.nombre })
-        mostrarAlerta('success', 'Tipo actualizado correctamente.')
+        await api.actualizarMarcaCelular(crud.editandoId, body)
+        mostrarAlerta('success', 'Marca actualizada correctamente.')
       } else {
-        await api.crearTipo({ nombre: crud.form.nombre })
-        mostrarAlerta('success', 'Tipo creado correctamente.')
+        await api.crearMarcaCelular(body)
+        mostrarAlerta('success', 'Marca creada correctamente.')
       }
       crud.fetchItems(crud.busqueda)
       crud.cancelar()
@@ -32,10 +33,10 @@ export default function SeccionTipos({ mostrarAlerta }) {
   }
 
   const handleEliminar = async (item) => {
-    if (!window.confirm(`¿Eliminar el tipo "${item.nombre}"?\nSolo se puede si no tiene accesorios asociados.`)) return
+    if (!window.confirm(`¿Desactivar la marca "${item.nombre}"?\nTambién se desactivarán sus modelos asociados.`)) return
     try {
-      await api.eliminarTipo(item.tipo_id)
-      mostrarAlerta('success', `Tipo "${item.nombre}" eliminado.`)
+      await api.eliminarMarcaCelular(item.marca_celular_id)
+      mostrarAlerta('success', `Marca "${item.nombre}" desactivada.`)
       crud.fetchItems(crud.busqueda)
     } catch (err) {
       mostrarAlerta('error', `Error al eliminar: ${err.message}`)
@@ -43,10 +44,10 @@ export default function SeccionTipos({ mostrarAlerta }) {
   }
 
   const handleActivar = async (item) => {
-    if (!window.confirm(`¿Reactivar el tipo "${item.nombre}"?`)) return
+    if (!window.confirm(`¿Reactivar la marca "${item.nombre}"?`)) return
     try {
-      await api.actualizarTipo(item.tipo_id, { activo: true })
-      mostrarAlerta('success', `Tipo "${item.nombre}" reactivado.`)
+      await api.actualizarMarcaCelular(item.marca_celular_id, { activo: true })
+      mostrarAlerta('success', `Marca "${item.nombre}" reactivada.`)
       crud.fetchItems(crud.busqueda)
     } catch (err) {
       mostrarAlerta('error', `Error al activar: ${err.message}`)
@@ -55,30 +56,34 @@ export default function SeccionTipos({ mostrarAlerta }) {
 
   return (
     <SeccionBase
-      titulo="Tipos"
+      titulo="Marcas de celular"
       crud={crud}
-      onAbrirEditar={(item) => crud.abrirEditar(item.tipo_id, { nombre: item.nombre })}
+      onAbrirEditar={(item) => crud.abrirEditar(item.marca_celular_id, { nombre: item.nombre })}
       onEliminar={handleEliminar}
       onActivar={handleActivar}
-      getId={i => i.tipo_id}
+      getId={i => i.marca_celular_id}
       filtroActivo={filtroActivo}
       setFiltroActivo={setFiltroActivo}
-      columnas={[{ label: 'Nombre', render: i => i.nombre }]}
+      columnas={[
+        { label: 'Nombre', render: i => i.nombre },
+      ]}
     >
       <form onSubmit={handleSubmit} className="acc-form">
-        <div className="form-group">
-          <label>Nombre *</label>
-          <input
-            value={crud.form.nombre}
-            onChange={e => crud.setFormField('nombre')(e.target.value)}
-            required
-            placeholder="Ej: Fundas"
-          />
+        <div className="form-row">
+          <div className="form-group">
+            <label>Nombre *</label>
+            <input
+              value={crud.form.nombre}
+              onChange={e => crud.setFormField('nombre')(e.target.value)}
+              required
+              placeholder="Ej: Samsung"
+            />
+          </div>
         </div>
         <div className="form-actions">
           <button type="button" className="btn btn-secondary" onClick={crud.cancelar}>Cancelar</button>
           <button type="submit" className="btn btn-primary">
-            {crud.editandoId ? 'Guardar cambios' : 'Crear tipo'}
+            {crud.editandoId ? 'Guardar cambios' : 'Crear marca'}
           </button>
         </div>
       </form>

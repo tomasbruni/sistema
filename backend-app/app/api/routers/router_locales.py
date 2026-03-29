@@ -21,12 +21,15 @@ router = APIRouter(
 @router.get("/", response_model=list[Local])
 def listar_locales(
     activo: Optional[bool] = True,
+    tipo: Optional[str] = None,          
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(get_current_user)
 ):
     statement = select(Local)
     if activo is not None:
         statement = statement.where(Local.activo == activo)
+    if tipo is not None:                 
+        statement = statement.where(Local.tipo == tipo)
     return session.exec(statement).all()
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -35,34 +38,25 @@ def crear_local(
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(require_admin)
 ):
-    try:
-        if not (local.tipo in ["LOCAL","DEPOSITO","ONLINE"]):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error, tipo debe ser: LOCAL, DEPOSITO, ONLINE"
-            )
+    print(f"tipo recibido: '{local.tipo}'")
+    if local.tipo not in ["LOCAL", "DEPOSITO", "ONLINE"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Error, tipo debe ser: LOCAL, DEPOSITO, ONLINE"
+        )
 
+    try:
         nuevo_local = Local(**local.model_dump())
         session.add(nuevo_local)
         session.commit()
         session.refresh(nuevo_local)
-        
-        return {
-            "mensaje": "Local creado exitosamente",
-            "local": nuevo_local
-        }
+        return {"mensaje": "Local creado exitosamente", "local": nuevo_local}
     except exc.IntegrityError as e:
         session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error: {str(e)}")
     except Exception as e:
         session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error inesperado: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
 
 
 @router.put("/{local_id}")

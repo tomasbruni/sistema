@@ -1,30 +1,20 @@
-// ─── COMPONENTE GENÉRICO DE SECCIÓN ──────────────────────────────────────────
-// Encapsula: header + buscador + form card + tabla
-// Props:
-//   titulo        → string
-//   crud          → objeto retornado por useCrudSeccion
-//   onAbrirCrear  → fn opcional (si no se pasa, usa crud.abrirCrear)
-//   onAbrirEditar → fn(item)
-//   onEliminar    → fn(item)
-//   columnas      → [{ label, render: (item) => ReactNode }]
-//   getId         → fn(item) => key
-//   labelCrear    → string | null  (null oculta el botón de crear)
-//   children      → contenido del formulario
 export default function SeccionBase({
   titulo, crud,
-  onAbrirCrear, onAbrirEditar, onEliminar,
+  onAbrirCrear, onAbrirEditar, onEliminar, onActivar,
   columnas, getId,
   labelCrear = 'Nuevo',
+  filtroActivo, setFiltroActivo,
   children,
 }) {
   const handleCrear = onAbrirCrear ?? crud.abrirCrear
-  let tituloBase = null;
-  if (titulo !== "Locales"){
-    tituloBase = titulo.endsWith('s') ? titulo.slice(0, -1) : titulo;
+
+  let tituloBase = null
+  if (titulo !== "Locales") {
+    tituloBase = titulo.endsWith('s') ? titulo.slice(0, -1) : titulo
+  } else {
+    tituloBase = "Local"
   }
-  else {
-    tituloBase = "Local";
-  }
+
   return (
     <>
       <div className="seccion-header">
@@ -42,15 +32,37 @@ export default function SeccionBase({
       )}
 
       {!crud.mostrarForm && (
-        <div className="lista-toolbar">
-          <input
-            className="buscador"
-            type="search"
-            placeholder={`Buscar ${titulo.toLowerCase()}...`}
-            value={crud.busqueda}
-            onChange={crud.handleBusqueda}
-          />
-        </div>
+        <>
+          <div className="lista-toolbar">
+            <input
+              className="buscador"
+              type="search"
+              placeholder={`Buscar ${titulo.toLowerCase()}...`}
+              value={crud.busqueda}
+              onChange={crud.handleBusqueda}
+            />
+          </div>
+
+          {/* Filtro activo/inactivo — solo si la sección lo soporta */}
+          {filtroActivo !== undefined && (
+            <div className="filtros-panel">
+              <div className="filtros-row">
+                <span className="filtros-sublabel">Estado:</span>
+                <div className="filtros-chips">
+                  {[{ valor: true, label: 'Activos' }, { valor: false, label: 'Inactivos' }].map(({ valor, label }) => (
+                    <button
+                      key={label}
+                      className={`filtro-chip filtro-chip-estado ${filtroActivo === valor ? 'filtro-chip-activo' : ''}`}
+                      onClick={() => setFiltroActivo(valor)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {crud.loading ? (
@@ -72,11 +84,14 @@ export default function SeccionBase({
             </thead>
             <tbody>
               {crud.items.map(item => (
-                <tr key={getId(item)}>
+                <tr key={getId(item)} className={item.activo === false ? 'row-inactiva' : ''}>
                   {columnas.map(c => <td key={c.label}>{c.render(item)}</td>)}
                   <td className="acciones-cell">
                     <button className="btn btn-sm btn-secondary" onClick={() => onAbrirEditar(item)}>Editar</button>
-                    <button className="btn btn-sm btn-danger"    onClick={() => onEliminar(item)}>Eliminar</button>
+                    {item.activo === false && onActivar
+                      ? <button className="btn btn-sm btn-success" onClick={() => onActivar(item)}>Activar</button>
+                      : <button className="btn btn-sm btn-danger"  onClick={() => onEliminar(item)}>Eliminar</button>
+                    }
                   </td>
                 </tr>
               ))}

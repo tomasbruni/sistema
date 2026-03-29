@@ -1,4 +1,4 @@
-import {  useState } from 'react'
+import { useState } from 'react'
 import './AccesoriosPage.css'
 import SearchableSelect from '../components/SearchableSelect/SearchableSelect'
 import { api } from '../api/api'
@@ -6,23 +6,20 @@ import { useAlerta } from '../hooks/useAlerta'
 import useSelectOptions from '../hooks/useSelectOptions'
 import useListaFiltrada from '../hooks/useListaFiltrada'
 
-
-// ─── ESTADO INICIAL DEL FORMULARIO ──────────────────────────────────────────
 const formVacio = {
   nombre: '',
   precio: '',
   tipo_id: null,
   subtipo_id: null,
-  modelo_id: null,
+  marca_celular_id: null,
+  modelo_celular_id: null,
   marca_id: null,
   activo: true,
 }
 
-// ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
 export default function AccesoriosPage() {
-  const {alerta, mostrarAlerta, cerrarAlerta} = useAlerta()
+  const { alerta, mostrarAlerta, cerrarAlerta } = useAlerta()
 
-  // ── Lista, búsqueda, paginación y filtros del panel ───────────────────────
   const {
     items: accesorios, loadingLista,
     pagina, hayMas, irAPagina,
@@ -34,32 +31,26 @@ export default function AccesoriosPage() {
     refetch,
     nombreTipo, nombreSubtipo,
   } = useListaFiltrada((p) => api.listarAccesorios(p), { conCatalogos: true })
-  const [loadingExport, setLoadingExport]   = useState(false)
- 
 
-  // ── Formulario ────────────────────────────────────────────────────────────
-  const [form, setForm]               = useState(formVacio)
-  const [editandoId, setEditandoId]   = useState(null)
-  const [mostrarForm, setMostrarForm] = useState(false)
-  const [loading, setLoading]         = useState(false)
+  const [loadingExport, setLoadingExport] = useState(false)
+  const [form, setForm]                   = useState(formVacio)
+  const [editandoId, setEditandoId]       = useState(null)
+  const [mostrarForm, setMostrarForm]     = useState(false)
+  const [loading, setLoading]             = useState(false)
 
-  // Opciones de los SearchableSelects del formulario
   const { options, setOption, buscadorSelect } =
-    useSelectOptions(['tipos', 'subtipos', 'marcas', 'modelos'])
+    useSelectOptions(['tipos', 'subtipos', 'marcas', 'marcasCelulares', 'modelos'])
 
-  // Cuando cambia tipo_id en el form, recargar subtipos filtrados por tipo
-  // redundante, ya lo cambia el searchableselect con onChange
-    // ── Exportar ──────────────────────────────────────────────────────────────
+  // ── Exportar ─────────────────────────────────────────────────────────────
   const handleExportar = async () => {
     setLoadingExport(true)
     try {
       const blob = await api.exportarAccesorios({
-        buscar:      busqueda,
-        tipo_id:     filtroTipoId,
-        subtipo_id:  filtroSubtipoId,
-        activo:      filtroActivo,
+        buscar:     busqueda,
+        tipo_id:    filtroTipoId,
+        subtipo_id: filtroSubtipoId,
+        activo:     filtroActivo,
       })
-      // Crear link temporal y disparar descarga
       const url  = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href  = url
@@ -72,8 +63,6 @@ export default function AccesoriosPage() {
       setLoadingExport(false)
     }
   }
-
-    
 
   // ── Form helpers ──────────────────────────────────────────────────────────
   const handleChange = (e) => {
@@ -90,27 +79,32 @@ export default function AccesoriosPage() {
     setMostrarForm(true)
     buscadorSelect('tipos', '')
     buscadorSelect('marcas', '')
-    buscadorSelect('modelos', '')
+    buscadorSelect('marcasCelulares', '')
     setOption('subtipos', [])
+    setOption('modelos', [])
   }
 
   const abrirEditar = (acc) => {
     setForm({
-      nombre:     acc.nombre,
-      precio:     acc.precio,
-      tipo_id:    acc.tipo_id    ?? null,
-      subtipo_id: acc.subtipo_id ?? null,
-      modelo_id:  acc.modelo_id  ?? null,
-      marca_id:   acc.marca_id   ?? null,
-      activo:     acc.activo,
+      nombre:           acc.nombre,
+      precio:           acc.precio,
+      tipo_id:          acc.tipo_id          ?? null,
+      subtipo_id:       acc.subtipo_id       ?? null,
+      marca_celular_id: acc.marca_celular_id ?? null,
+      modelo_celular_id: acc.modelo_celular_id ?? null,
+      marca_id:         acc.marca_id         ?? null,
+      activo:           acc.activo,
     })
     setEditandoId(acc.accesorio_id)
     setMostrarForm(true)
-    // Precargar opciones para que SearchableSelect muestre el label actual
     buscadorSelect('tipos', '')
     buscadorSelect('marcas', '')
-    buscadorSelect('modelos', '')
-    buscadorSelect('subtipos', '', acc.tipo_id)
+    buscadorSelect('marcasCelulares', '')
+    buscadorSelect('subtipos', '', { tipo_id: acc.tipo_id })
+    // precargar modelos filtrados por la marca actual
+    if (acc.marca_celular_id) {
+      buscadorSelect('modelos', '', { marca_celular_id: acc.marca_celular_id })
+    }
   }
 
   const cancelar = () => {
@@ -125,13 +119,14 @@ export default function AccesoriosPage() {
     setLoading(true)
 
     const body = {
-      nombre:     form.nombre,
-      precio:     parseInt(form.precio),
-      tipo_id:    form.tipo_id    ? parseInt(form.tipo_id)    : undefined,
-      subtipo_id: form.subtipo_id ? parseInt(form.subtipo_id) : null,
-      modelo_id:  form.modelo_id  ? parseInt(form.modelo_id)  : null,
-      marca_id:   form.marca_id   ? parseInt(form.marca_id)   : null,
-      activo:     form.activo,
+      nombre:            form.nombre,
+      precio:            parseInt(form.precio),
+      tipo_id:           form.tipo_id           ? parseInt(form.tipo_id)           : undefined,
+      subtipo_id:        form.subtipo_id        ? parseInt(form.subtipo_id)        : null,
+      marca_celular_id:  form.marca_celular_id  ? parseInt(form.marca_celular_id)  : null,
+      modelo_celular_id: form.modelo_celular_id ? parseInt(form.modelo_celular_id) : null,
+      marca_id:          form.marca_id          ? parseInt(form.marca_id)          : null,
+      activo:            form.activo,
     }
 
     try {
@@ -171,7 +166,7 @@ export default function AccesoriosPage() {
     }
   }
 
-  // ── Eliminar ──────────────────────────────────────────────────────────────
+  // ── Eliminar / Activar ────────────────────────────────────────────────────
   const handleEliminar = async (acc) => {
     if (!window.confirm(`¿Eliminar "${acc.nombre}"?\nSi tiene ventas o detalles, se desactivará.`)) return
     try {
@@ -183,7 +178,6 @@ export default function AccesoriosPage() {
     }
   }
 
-  // ── Activar ──────────────────────────────────────────────────────────────
   const handleActivar = async (acc) => {
     if (!window.confirm(`¿Reactivar "${acc.nombre}"?`)) return
     try {
@@ -195,7 +189,7 @@ export default function AccesoriosPage() {
     }
   }
 
-  // ─── RENDER ──────────────────────────────────────────────────────────────
+  // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
     <div className="page-container">
       <div className="page-header">
@@ -241,7 +235,7 @@ export default function AccesoriosPage() {
                     setFormField('tipo_id')(val)
                     setFormField('subtipo_id')(null)
                     setOption('subtipos', [])
-                    if (val) buscadorSelect('subtipos', '', val)
+                    if (val) buscadorSelect('subtipos', '', { tipo_id: val })
                   }}
                   onSearch={(t) => buscadorSelect('tipos', t)}
                   placeholder="Buscar tipo..."
@@ -253,7 +247,7 @@ export default function AccesoriosPage() {
                   options={options.subtipos}
                   value={form.subtipo_id}
                   onChange={setFormField('subtipo_id')}
-                  onSearch={(t) => buscadorSelect('subtipos', t, form.tipo_id)}
+                  onSearch={(t) => buscadorSelect('subtipos', t, { tipo_id: form.tipo_id })}
                   placeholder="Buscar subtipo..."
                   disabled={!form.tipo_id}
                 />
@@ -262,23 +256,42 @@ export default function AccesoriosPage() {
 
             <div className="form-row">
               <div className="form-group">
-                <label>Marca</label>
+                <label>Marca celular</label>
+                <SearchableSelect
+                  options={options.marcasCelulares}
+                  value={form.marca_celular_id}
+                  onChange={(val) => {
+                    setFormField('marca_celular_id')(val)
+                    setFormField('modelo_celular_id')(null)
+                    setOption('modelos', [])
+                    if (val) buscadorSelect('modelos', '', { marca_celular_id: val })
+                  }}
+                  onSearch={(t) => buscadorSelect('marcasCelulares', t)}
+                  placeholder="Buscar marca de celular..."
+                />
+              </div>
+              <div className="form-group">
+                <label>Modelo celular</label>
+                <SearchableSelect
+                  options={options.modelos}
+                  value={form.modelo_celular_id}
+                  onChange={setFormField('modelo_celular_id')}
+                  onSearch={(t) => buscadorSelect('modelos', t, { marca_celular_id: form.marca_celular_id })}
+                  placeholder="Buscar modelo..."
+                  disabled={!form.marca_celular_id}
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Marca accesorio</label>
                 <SearchableSelect
                   options={options.marcas}
                   value={form.marca_id}
                   onChange={setFormField('marca_id')}
                   onSearch={(t) => buscadorSelect('marcas', t)}
                   placeholder="Buscar marca..."
-                />
-              </div>
-              <div className="form-group">
-                <label>Modelo</label>
-                <SearchableSelect
-                  options={options.modelos}
-                  value={form.modelo_id}
-                  onChange={setFormField('modelo_id')}
-                  onSearch={(t) => buscadorSelect('modelos', t)}
-                  placeholder="Buscar modelo..."
                 />
               </div>
             </div>
@@ -323,7 +336,7 @@ export default function AccesoriosPage() {
 
           <div className="filtros-panel">
             <span className="filtros-label">Filtrar por:</span>
-            
+
             <div className="filtros-row">
               <span className="filtros-sublabel">Estado:</span>
               <div className="filtros-chips">
@@ -339,41 +352,33 @@ export default function AccesoriosPage() {
               </div>
             </div>
 
-                {tiposFiltro.length > 0 && (
-                  <div className="filtros-row">
-                    <span className="filtros-sublabel">Tipo:</span>
-                    <SearchableSelect
-                        options={options.tipos}
-                        value={filtroTipoId}
-                        onChange={(val) => {
-                          handleFiltroTipo(val) // se encarga useTabla con el id del objeto seleccionado
-                        }}
-                        onSearch={(t) => buscadorSelect('tipos', t)}
-                        placeholder="Filtrar por tipo"
-                      />
-                  </div>
-                )}
- 
-                {filtroTipoId && subtiposFiltro.length > 0 && (
-                  <div className="filtros-subtipos">
-                    <span className="filtros-sublabel">Subtipo:</span>
-                    {/* ss maneja su busqueda interna, cuando se selecciona
-                    un value, usa la f que le paso que es hfiltro
-                    ese setea un filtro de useTabla q modifica el listado
-                    principal de stock en funcion del id q le paso */}
-                    <div className='ss-filtro-subtipo'>
-                      <SearchableSelect
-                          options={options.subtipos}
-                          value={filtroSubtipoId}
-                          onChange={(id) => {
-                            handleFiltroSubtipo(id)
-                          }}
-                          onSearch={(t) => buscadorSelect('subtipos', t)}
-                          placeholder="Filtrar por subtipo"
-                        />
-                    </div>
-                  </div>
-                )}
+            {tiposFiltro.length > 0 && (
+              <div className="filtros-row">
+                <span className="filtros-sublabel">Tipo:</span>
+                <SearchableSelect
+                  options={options.tipos}
+                  value={filtroTipoId}
+                  onChange={(val) => handleFiltroTipo(val)}
+                  onSearch={(t) => buscadorSelect('tipos', t)}
+                  placeholder="Filtrar por tipo"
+                />
+              </div>
+            )}
+
+            {filtroTipoId && subtiposFiltro.length > 0 && (
+              <div className="filtros-subtipos">
+                <span className="filtros-sublabel">Subtipo:</span>
+                <div className='ss-filtro-subtipo'>
+                  <SearchableSelect
+                    options={options.subtipos}
+                    value={filtroSubtipoId}
+                    onChange={(id) => handleFiltroSubtipo(id)}
+                    onSearch={(t) => buscadorSelect('subtipos', t)}
+                    placeholder="Filtrar por subtipo"
+                  />
+                </div>
+              </div>
+            )}
 
             {hayFiltrosActivos && (
               <button className="btn-limpiar-filtros" onClick={limpiarFiltros}>
@@ -412,7 +417,7 @@ export default function AccesoriosPage() {
                     <td><span className="sku-badge">{acc.sku}</span></td>
                     <td>{acc.nombre}</td>
                     <td>${acc.precio.toLocaleString()}</td>
-                    <td>{acc.tipo_id  ? nombreTipo(acc.tipo_id)   : '—'}</td>
+                    <td>{acc.tipo_id    ? nombreTipo(acc.tipo_id)       : '—'}</td>
                     <td>{acc.subtipo_id ? nombreSubtipo(acc.subtipo_id) : '—'}</td>
                     <td>
                       <span className={`estado-badge ${acc.activo ? 'activo' : 'inactivo'}`}>

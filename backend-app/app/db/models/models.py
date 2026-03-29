@@ -39,8 +39,9 @@ class Accesorio(SQLModel, table=True):
         UniqueConstraint(
             "nombre",
             "tipo_id",
-            "modelo_id",
-            name="uq_accesorio_nombre_tipo_modelo"
+            "marca_celular_id",
+            "modelo_celular_id",
+            name="uq_accesorio_nombre_tipo_marca_celular"
         ),
     )
 
@@ -55,7 +56,8 @@ class Accesorio(SQLModel, table=True):
     precio: int
     tipo_id: int = Field(foreign_key="tipos_accesorios.tipo_id")
     subtipo_id: Optional[int] = Field(foreign_key="subtipos_accesorios.subtipo_id")
-    modelo_id: Optional[int] = Field(default=None, foreign_key="modelos_celulares.modelo_id")
+    marca_celular_id: Optional[int] = Field(default=None, foreign_key="marcas_celulares.marca_celular_id")
+    modelo_celular_id: Optional[int] = Field(default=None, foreign_key="modelos_celulares.modelo_celular_id")
     marca_id: Optional[int] = Field(foreign_key= "marcas.marca_id")
     activo: bool = Field(default = True)
 
@@ -84,21 +86,29 @@ class SubtipoAccesorio(SQLModel, table=True):
 class ModeloCelular(SQLModel, table=True):
     __tablename__ = "modelos_celulares" #type: ignore
     __table_args__ = (
-        UniqueConstraint("marca", "modelo"),
+        UniqueConstraint("marca_celular_id", "nombre", name="uq_modelo_por_marca"),
     )
 
-    modelo_id: Optional[int] = Field(default=None, primary_key=True)
-    marca: str
-    modelo: str
+    modelo_celular_id: Optional[int] = Field(default=None, primary_key=True)
+    marca_celular_id: int = Field(foreign_key="marcas_celulares.marca_celular_id")
+    nombre: str = Field(index=True,sa_column_kwargs={"unique": True})
     activo: bool = Field(default = True)
 
+class MarcaCelular(SQLModel, table=True):
+    __tablename__ = "marcas_celulares" #type: ignore
+
+    marca_celular_id: Optional[int] = Field(default=None, primary_key=True)
+    nombre: str = Field(index=True,sa_column_kwargs={"unique": True})
+    activo: bool = Field(default = True)
+    
 
 class Celular(SQLModel, table=True):
     __tablename__ = "celulares" #type: ignore
 
     celular_id: Optional[int] = Field(default=None, primary_key=True)
     # FK a modelos en vez de marca, modelo
-    modelo_id: int = Field(foreign_key="modelos_celulares.modelo_id")
+    modelo_celular_id: int = Field(foreign_key="modelos_celulares.modelo_celular_id")
+    marca_celular_id: int = Field(foreign_key="marcas_celulares.marca_celular_id")
     imei: str = Field(index=True,sa_column_kwargs={"unique": True})
     precio: int
     local_id: int = Field(foreign_key="locales.local_id")

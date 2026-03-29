@@ -1,13 +1,18 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { api } from '../../api/api'
 import useCrudSeccion from '../../hooks/useCrudSeccion'
 import SeccionBase from './SeccionBase'
 
 export default function SeccionLocales({ mostrarAlerta }) {
-  const fetchFn = useCallback(() => api.listarLocales(), [])
-  const crud    = useCrudSeccion(fetchFn, { nombre: '', direccion: '', tipo: '' })
+  const [filtroActivo, setFiltroActivo] = useState(true)
 
-  useEffect(() => { crud.fetchItems('') }, [])
+  const fetchFn = useCallback(
+    () => api.listarLocales({ activo: filtroActivo }),
+    [filtroActivo]
+  )
+  const crud = useCrudSeccion(fetchFn, { nombre: '', direccion: '', tipo: 'LOCAL' })
+
+  useEffect(() => { crud.fetchItems('') }, [filtroActivo])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -38,17 +43,31 @@ export default function SeccionLocales({ mostrarAlerta }) {
     }
   }
 
+  const handleActivar = async (item) => {
+    if (!window.confirm(`¿Reactivar el local "${item.nombre}"?`)) return
+    try {
+      await api.actualizarLocal(item.local_id, { activo: true })
+      mostrarAlerta('success', `Local "${item.nombre}" reactivado.`)
+      crud.fetchItems(crud.busqueda)
+    } catch (err) {
+      mostrarAlerta('error', `Error al activar: ${err.message}`)
+    }
+  }
+
   return (
     <SeccionBase
       titulo="Locales"
       crud={crud}
       onAbrirEditar={(item) => crud.abrirEditar(item.local_id, { nombre: item.nombre, direccion: item.direccion, tipo: item.tipo })}
       onEliminar={handleEliminar}
+      onActivar={handleActivar}
       getId={i => i.local_id}
+      filtroActivo={filtroActivo}
+      setFiltroActivo={setFiltroActivo}
       columnas={[
         { label: 'Nombre',    render: i => i.nombre },
         { label: 'Dirección', render: i => i.direccion },
-        { label: 'Tipo', render: i => i.tipo },
+        { label: 'Tipo',      render: i => i.tipo },
       ]}
       labelCrear="Nuevo"
     >
@@ -73,10 +92,10 @@ export default function SeccionLocales({ mostrarAlerta }) {
         </div>
         <div className="form-group">
           <label>Tipo *</label>
-          <select
-            value={crud.form.tipo ?? "LOCAL"}
-            onChange={e => crud.setForm({ ...crud.form, tipo: e.target.value })}
-          >
+        <select
+          value={crud.form.tipo || 'LOCAL'}  // ← fallback por si viene vacío
+          onChange={e => crud.setForm({ ...crud.form, tipo: e.target.value })}
+        >
             <option value="LOCAL">Local</option>
             <option value="DEPOSITO">Depósito</option>
             <option value="ONLINE">Venta online</option>

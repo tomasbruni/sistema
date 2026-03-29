@@ -1,8 +1,8 @@
-"""empty message
+"""init
 
-Revision ID: 3a610fc0aaf8
+Revision ID: 423a55c5b492
 Revises: 
-Create Date: 2026-03-26 23:39:15.931229
+Create Date: 2026-03-28 21:45:10.107885
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = '3a610fc0aaf8'
+revision: str = '423a55c5b492'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -45,14 +45,20 @@ def upgrade() -> None:
     sa.Column('activo', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('marca_id')
     )
-    op.create_table('modelos_celulares',
-    sa.Column('modelo_id', sa.Integer(), nullable=False),
-    sa.Column('marca', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('modelo', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    op.create_table('marcas_celulares',
+    sa.Column('marca_celular_id', sa.Integer(), nullable=False),
+    sa.Column('nombre', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('activo', sa.Boolean(), nullable=False),
-    sa.PrimaryKeyConstraint('modelo_id'),
-    sa.UniqueConstraint('marca', 'modelo')
+    sa.PrimaryKeyConstraint('marca_celular_id')
     )
+    op.create_index(op.f('ix_marcas_celulares_nombre'), 'marcas_celulares', ['nombre'], unique=True)
+    op.create_table('modelos_celulares',
+    sa.Column('modelo_celular_id', sa.Integer(), nullable=False),
+    sa.Column('nombre', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('activo', sa.Boolean(), nullable=False),
+    sa.PrimaryKeyConstraint('modelo_celular_id')
+    )
+    op.create_index(op.f('ix_modelos_celulares_nombre'), 'modelos_celulares', ['nombre'], unique=True)
     op.create_table('proveedores',
     sa.Column('proveedor_id', sa.Integer(), nullable=False),
     sa.Column('nombre', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
@@ -76,14 +82,16 @@ def upgrade() -> None:
     )
     op.create_table('celulares',
     sa.Column('celular_id', sa.Integer(), nullable=False),
-    sa.Column('modelo_id', sa.Integer(), nullable=False),
+    sa.Column('modelo_celular_id', sa.Integer(), nullable=False),
+    sa.Column('marca_celular_id', sa.Integer(), nullable=False),
     sa.Column('imei', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('precio', sa.Integer(), nullable=False),
     sa.Column('local_id', sa.Integer(), nullable=False),
     sa.Column('proveedor', sa.Integer(), nullable=True),
     sa.Column('estado', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['local_id'], ['locales.local_id'], ),
-    sa.ForeignKeyConstraint(['modelo_id'], ['modelos_celulares.modelo_id'], ),
+    sa.ForeignKeyConstraint(['marca_celular_id'], ['marcas_celulares.marca_celular_id'], ),
+    sa.ForeignKeyConstraint(['modelo_celular_id'], ['modelos_celulares.modelo_celular_id'], ),
     sa.ForeignKeyConstraint(['proveedor'], ['proveedores.proveedor_id'], ),
     sa.PrimaryKeyConstraint('celular_id')
     )
@@ -165,15 +173,17 @@ def upgrade() -> None:
     sa.Column('precio', sa.Integer(), nullable=False),
     sa.Column('tipo_id', sa.Integer(), nullable=False),
     sa.Column('subtipo_id', sa.Integer(), nullable=True),
-    sa.Column('modelo_id', sa.Integer(), nullable=True),
+    sa.Column('modelo_celular_id', sa.Integer(), nullable=True),
+    sa.Column('marca_celular_id', sa.Integer(), nullable=True),
     sa.Column('marca_id', sa.Integer(), nullable=True),
     sa.Column('activo', sa.Boolean(), nullable=False),
+    sa.ForeignKeyConstraint(['marca_celular_id'], ['marcas_celulares.marca_celular_id'], ),
     sa.ForeignKeyConstraint(['marca_id'], ['marcas.marca_id'], ),
-    sa.ForeignKeyConstraint(['modelo_id'], ['modelos_celulares.modelo_id'], ),
+    sa.ForeignKeyConstraint(['modelo_celular_id'], ['modelos_celulares.modelo_celular_id'], ),
     sa.ForeignKeyConstraint(['subtipo_id'], ['subtipos_accesorios.subtipo_id'], ),
     sa.ForeignKeyConstraint(['tipo_id'], ['tipos_accesorios.tipo_id'], ),
     sa.PrimaryKeyConstraint('accesorio_id'),
-    sa.UniqueConstraint('nombre', 'tipo_id', 'modelo_id', name='uq_accesorio_nombre_tipo_modelo')
+    sa.UniqueConstraint('nombre', 'tipo_id', 'marca_celular_id', name='uq_accesorio_nombre_tipo_marca_celular')
     )
     op.create_index(op.f('ix_accesorios_sku'), 'accesorios', ['sku'], unique=True)
     op.create_table('detalles_ventas_celulares',
@@ -284,7 +294,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_tipos_accesorios_nombre'), table_name='tipos_accesorios')
     op.drop_table('tipos_accesorios')
     op.drop_table('proveedores')
+    op.drop_index(op.f('ix_modelos_celulares_nombre'), table_name='modelos_celulares')
     op.drop_table('modelos_celulares')
+    op.drop_index(op.f('ix_marcas_celulares_nombre'), table_name='marcas_celulares')
+    op.drop_table('marcas_celulares')
     op.drop_table('marcas')
     op.drop_table('locales')
     op.drop_index(op.f('ix_config_comisiones_tipo_producto'), table_name='config_comisiones')

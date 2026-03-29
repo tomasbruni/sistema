@@ -79,26 +79,26 @@ def actualizar_tipo_accesorio(
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(require_admin)
 ):
-    """Actualiza el nombre de un tipo"""
     tipo = session.get(TipoAccesorio, tipo_id)
     if not tipo:
         raise HTTPException(status_code=404, detail="Tipo no encontrado")
-    
     try:
-        tipo.nombre = tipo_act.nombre
+        update_data = tipo_act.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(tipo, key, value)
+
         session.add(tipo)
         session.commit()
         session.refresh(tipo)
         return tipo
-        
     except IntegrityError:
         session.rollback()
         raise HTTPException(
             status_code=400,
             detail=f"Ya existe otro tipo con el nombre '{tipo_act.nombre}'"
         )
-
-
+    
+    
 @router.delete("/{tipo_id}")
 def eliminar_tipo_accesorio(
     tipo_id: int,

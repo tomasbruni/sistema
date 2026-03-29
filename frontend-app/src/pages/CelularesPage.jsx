@@ -8,7 +8,8 @@ import useSelectOptions from '../hooks/useSelectOptions'
 const ESTADOS = ['DISPONIBLE', 'VENDIDO', 'REPARACION']
 
 const formVacio = {
-  modelo_id: null,
+  modelo_celular_id: null,
+  marca_celular_id: null,
   imei:      '',
   precio:    '',
   local_id:  null,
@@ -25,14 +26,17 @@ export default function CelularesPage() {
   const [loading, setLoading]             = useState(false)
   const [loadingLista, setLoadingLista]   = useState(false)
 
-  const { options, buscadorSelect }       = useSelectOptions(['modelos'])
+  const { options, buscadorSelect, setOption }       = useSelectOptions(['marcasCelulares','modelos'])
   const [locales, setLocales]             = useState([])
   const [marcasDisponibles, setMarcasDisponibles] = useState([]) // ["Apple", "Samsung", ...]
+  const [modelosDisponibles, setModelosDisponibles] = useState([])
 
   // Filtros
   const [filtroLocalId, setFiltroLocalId] = useState(null)
   const [filtroEstado, setFiltroEstado]   = useState(null)
   const [filtroMarca, setFiltroMarca]     = useState(null)
+  const [filtroModelo, setFiltroModelo]   = useState(null)
+  const [listaModelosFiltro, setListaModelosFiltro] = useState([])
 
   // Búsqueda IMEI
   const [busquedaImei, setBusquedaImei]   = useState('')
@@ -44,11 +48,14 @@ export default function CelularesPage() {
 
   // ── Carga inicial ─────────────────────────────────────────────────────────
   useEffect(() => {
-    fetchCelulares(0, null, null, null, '')
-    buscadorSelect('modelos', '')
+    fetchCelulares(0, null, null, null, null, '')
+    buscadorSelect('marcas', '')
     api.listarLocales().then(setLocales).catch(() => {})
     api.listarMarcasCelulares()
       .then(data => setMarcasDisponibles(data))
+      .catch(() => {})
+    api.listarModelos()
+      .then(data => setModelosDisponibles(data))
       .catch(() => {})
   }, [])
 
@@ -58,6 +65,7 @@ export default function CelularesPage() {
     localId  = filtroLocalId,
     estado   = filtroEstado,
     marca    = filtroMarca,
+    modelo   = filtroModelo,
     imei     = busquedaImei,
   ) => {
     setLoadingLista(true)
@@ -66,7 +74,8 @@ export default function CelularesPage() {
         skip: pag * LIMIT, limit: LIMIT + 1,
         local_id: localId,
         estado,
-        marca,
+        marca_celular_id: marca,
+        modelo_celular_id: modelo,
         imei,
       })
       setHayMas(data.length > LIMIT)
@@ -99,30 +108,46 @@ export default function CelularesPage() {
     const nuevo = filtroLocalId === localId ? null : localId
     setFiltroLocalId(nuevo)
     setPagina(0)
-    fetchCelulares(0, nuevo, filtroEstado, filtroMarca)
+    fetchCelulares(0, nuevo, filtroEstado, filtroMarca, filtroModelo)
   }
 
   const handleFiltroEstado = (estado) => {
     const nuevo = filtroEstado === estado ? null : estado
     setFiltroEstado(nuevo)
     setPagina(0)
-    fetchCelulares(0, filtroLocalId, nuevo, filtroMarca)
+    fetchCelulares(0, filtroLocalId, nuevo, filtroMarca, filtroModelo)
   }
 
   const handleFiltroMarca = (marca) => {
     const nuevo = filtroMarca === marca ? null : marca
     setFiltroMarca(nuevo)
+    setFiltroModelo(null)
+    setListaModelosFiltro([])
     setPagina(0)
-    fetchCelulares(0, filtroLocalId, filtroEstado, nuevo)
+    fetchCelulares(0, filtroLocalId, filtroEstado, nuevo, filtroModelo)
+    if (nuevo) {
+      api.listarModelos({ marca_celular_id: nuevo, buscar: '' })
+        .then(data => setListaModelosFiltro(data.map(s => ({ value: s.subtipo_id, label: s.nombre }))))
+        .catch(() => {})
+    }
   }
+
+  const handleFiltroModelo = (modelo) => {
+    const nuevo = filtroModelo === modelo ? null : modelo
+    setFiltroModelo(nuevo)
+    setPagina(0)
+    fetchCelulares(0, filtroLocalId, filtroEstado, filtroMarca, filtroModelo)
+  }  
 
   const limpiarFiltros = () => {
     setFiltroLocalId(null)
     setFiltroEstado(null)
     setFiltroMarca(null)
+    setFiltroModelo(null)
+    setListaModelosFiltro(null)
     setBusquedaImei('')
     setPagina(0)
-    fetchCelulares(0, null, null, null, '')
+    fetchCelulares(0, null, null, null, null, '')
   }
 
   const hayFiltrosActivos = filtroLocalId || filtroEstado || filtroMarca || busquedaImei
@@ -145,7 +170,8 @@ export default function CelularesPage() {
 
   const abrirEditar = (cel) => {
     setForm({
-      modelo_id: cel.modelo_id ?? null,
+      marca_celular_id: cel.marca_celular_id ?? null,
+      modelo_celular_id: cel.modelo_celular_id ?? null,
       imei:      cel.imei,
       precio:    cel.precio,
       local_id:  cel.local_id ?? null,
@@ -153,7 +179,10 @@ export default function CelularesPage() {
     })
     setEditandoId(cel.celular_id)
     setMostrarForm(true)
-    buscadorSelect('modelos', '')
+    buscadorSelect('marcasCelulares', '')
+    if (cel.marca_celular_id) {
+      buscadorSelect('modelos', '', { marca_celular_id: cel.marca_celular_id })
+    }
   }
 
   const cancelar = () => {
@@ -167,7 +196,8 @@ export default function CelularesPage() {
     e.preventDefault()
     setLoading(true)
     const body = {
-      modelo_id: form.modelo_id,
+      marca_celular_id: form.marca_celular_id,
+      modelo_celular_id: form.modelo_celular_id,
       imei:      form.imei.trim(),
       precio:    Number(form.precio),
       local_id:  form.local_id,
@@ -204,7 +234,8 @@ export default function CelularesPage() {
 
   // ── Helpers de display ────────────────────────────────────────────────────
   const nombreLocal  = (id) => locales.find(l => l.local_id === id)?.nombre ?? id
-  const nombreModelo = (id) => options.modelos.find(m => m.value === id)?.label ?? id
+  const nombreMarca = (id) => marcasDisponibles.find(m => m.marca_celular_id === id)?.nombre ?? id
+  const nombreModelo = (id) => modelosDisponibles.find(m => m.modelo_celular_id === id)?.nombre ?? id
 
   const estadoClase = (estado) => ({
     DISPONIBLE: 'activo',
@@ -231,18 +262,37 @@ export default function CelularesPage() {
           <form onSubmit={handleSubmit} className="acc-form">
             <div className="form-row">
               <div className="form-group">
-                <label>Modelo *</label>
+                <label>IMEI *</label>
+                <input name="imei" value={form.imei} onChange={handleChange} required placeholder="Ej: 123456789012345" />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Marca celular</label>
                 <SearchableSelect
-                  options={options.modelos}
-                  value={form.modelo_id}
-                  onChange={setFormField('modelo_id')}
-                  onSearch={(t) => buscadorSelect('modelos', t)}
-                  placeholder="Buscar modelo..."
+                  options={options.marcasCelulares}
+                  value={form.marca_celular_id}
+                  onChange={(val) => {
+                    setFormField('marca_celular_id')(val)
+                    setFormField('modelo_celular_id')(null)
+                    setOption('modelos', [])
+                    if (val) buscadorSelect('modelos', '', { marca_celular_id: val })
+                  }}
+                  onSearch={(t) => buscadorSelect('marcasCelulares', t)}
+                  placeholder="Buscar marca de celular..."
                 />
               </div>
               <div className="form-group">
-                <label>IMEI *</label>
-                <input name="imei" value={form.imei} onChange={handleChange} required placeholder="Ej: 123456789012345" />
+                <label>Modelo celular</label>
+                <SearchableSelect
+                  options={options.modelos}
+                  value={form.modelo_celular_id}
+                  onChange={setFormField('modelo_celular_id')}
+                  onSearch={(t) => buscadorSelect('modelos', t, { marca_celular_id: form.marca_celular_id })}
+                  placeholder="Buscar modelo..."
+                  disabled={!form.marca_celular_id}
+                />
               </div>
             </div>
 
@@ -297,21 +347,33 @@ export default function CelularesPage() {
           <div className="filtros-panel">
             <span className="filtros-label">Filtrar por:</span>
 
-            {/* Marca — SearchableSelect con opciones estáticas */}
-            <div className="filtros-row">
-              <span className="filtros-sublabel">Marca:</span>
-              <div className="filtros-chips">
-                {marcasDisponibles.map(m => (
-                  <button
-                    key={m}
-                    className={`filtro-chip ${filtroMarca === m ? 'filtro-chip-activo' : ''}`}
-                    onClick={() => handleFiltroMarca(m)}
-                  >
-                    {m}
-                  </button>
-                ))}
+            {marcasDisponibles.length > 0 && (
+              <div className="filtros-row">
+                <span className="filtros-sublabel">Tipo:</span>
+                <SearchableSelect
+                  options={options.marcasCelulares}
+                  value={filtroMarca}
+                  onChange={(val) => handleFiltroMarca(val)}
+                  onSearch={(t) => buscadorSelect('marcasCelulares', t)}
+                  placeholder="Filtrar por marca"
+                />
               </div>
-            </div>
+            )}
+
+            {filtroMarca && listaModelosFiltro.length > 0 && (
+              <div className="filtros-subtipos">
+                <span className="filtros-sublabel">Subtipo:</span>
+                <div className='ss-filtro-subtipo'>
+                  <SearchableSelect
+                    options={options.modelos}
+                    value={filtroModelo}
+                    onChange={(id) => handleFiltroModelo(id)}
+                    onSearch={(t) => buscadorSelect('modelos', t)}
+                    placeholder="Filtrar por modelo"
+                  />
+                </div>
+              </div>)}
+
 
             {locales.length > 0 && (
               <div className="filtros-row">
@@ -349,7 +411,7 @@ export default function CelularesPage() {
               <button className="btn-limpiar-filtros" onClick={limpiarFiltros}>✕ Limpiar filtros</button>
             )}
           </div>
-        </>
+        </> 
       )}
 
       {/* ── Tabla ── */}
@@ -364,6 +426,7 @@ export default function CelularesPage() {
               <thead>
                 <tr>
                   <th>IMEI</th>
+                  <th>Marca</th>
                   <th>Modelo</th>
                   <th>Precio</th>
                   <th>Local</th>
@@ -375,7 +438,8 @@ export default function CelularesPage() {
                 {celulares.map(cel => (
                   <tr key={cel.celular_id}>
                     <td><span className="sku-badge">{cel.imei}</span></td>
-                    <td>{nombreModelo(cel.modelo_id)}</td>
+                    <td>{nombreMarca(cel.marca_celular_id)}</td>
+                    <td>{nombreModelo(cel.modelo_celular_id)}</td>
                     <td>${cel.precio.toLocaleString()}</td>
                     <td>{nombreLocal(cel.local_id)}</td>
                     <td>

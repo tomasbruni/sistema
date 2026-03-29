@@ -12,7 +12,7 @@ import { formatFecha, formatPrecio } from '../helpers/formats'
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export default function VentasPage() {
-  const { alerta, mostrarAlerta } = useAlerta()
+  const { alerta, mostrarAlerta, cerrarAlerta } = useAlerta()
   const {rol} = useAuth()
 
   // ── Modo ──────────────────────────────────────────────────────────────────
@@ -32,8 +32,6 @@ export default function VentasPage() {
   // ── Creación: carrito ─────────────────────────────────────────────────────
   const [productos, setProductos] = useState([])
   // productos: [{ _key, tipo, id, label, precio_unitario, cantidad, imei?, numero_serie? }]
-
-
 
   // ── Creación: 3 formularios independientes ────────────────────────────────
   const [formAccAbierto, setFormAccAbierto]   = useState(false)
@@ -73,6 +71,9 @@ export default function VentasPage() {
 
   const {modalItem, modalAbierto, loadingModal, abrirModal, cerrarModal} = useModalDetalle(api.getDetallesVenta)
 
+  const [cuotas, setCuotas] = useState(1);
+  const [medioPagoElectronico, setMedioPagoElectronico] = useState("QR");
+
 
   // ─── Efectos ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -95,7 +96,7 @@ export default function VentasPage() {
   // ─── Locales ──────────────────────────────────────────────────────────────
   const fetchLocales = async () => {
     try {
-      const data = await api.listarLocales()
+      const data = await api.listarLocales({tipo: "LOCAL"})
       setLocales(data)
       if (data.length > 0) setLocalId(data[0].local_id)
     } catch (err) {
@@ -130,6 +131,8 @@ export default function VentasPage() {
     setMedioPago('efectivo')
     setMontoEfectivo('')
     setMontoElectronico('')
+    setMedioPagoElectronico('QR')
+    setCuotas(1)
     setModo('creacion')
   }
 
@@ -141,11 +144,11 @@ export default function VentasPage() {
   // ─── Formulario inline de producto ───────────────────────────────────────
   // ─── Abrir formularios ────────────────────────────────────────────────────
 
-const cerrarTodos = () => {
-  setFormAccAbierto(false)
-  setFormCelAbierto(false)
-  setFormChipAbierto(false)
-}
+  const cerrarTodos = () => {
+    setFormAccAbierto(false)
+    setFormCelAbierto(false)
+    setFormChipAbierto(false)
+  }
 
   const abrirFormAcc = () => {
     cerrarTodos()
@@ -304,12 +307,32 @@ const cerrarTodos = () => {
       return
     }
 
+    if (medioPago === 'electronico' && !medioPagoElectronico) {
+      mostrarAlerta('error', 'Seleccioná un medio de pago electrónico.')
+      return
+    }
+
+    if (medioPago === 'electronico' && !cuotas) {
+      mostrarAlerta('error', 'Seleccioná cantidad de cuotas.')
+      return
+    }
+
+    if (medioPago === 'ambos'  && !medioPagoElectronico) {
+      mostrarAlerta('error', 'Seleccioná el medio de pago electrónico.')
+      return
+    }
+
+    if (medioPagoElectronico !== 'CREDITO' && cuotas > 1) {
+      mostrarAlerta('error', 'Las cuotas solo aplican a pagos con tarjeta de crédito.')
+      return
+    }
+
     // Construir pagos
     let pagos = []
     if (medioPago === 'efectivo') {
       pagos = [{ medio_de_pago: 'EFECTIVO', importe: total }]
     } else if (medioPago === 'electronico') {
-      pagos = [{ medio_de_pago: 'ELECTRONICO', importe: total }]
+      pagos = [{ medio_de_pago: medioPagoElectronico, importe: total, cuotas: cuotas }]
     } else {
       // ambos
       const ef  = parseInt(montoEfectivo)  || 0
@@ -319,7 +342,7 @@ const cerrarTodos = () => {
         return
       }
       if (ef > 0)  pagos.push({ medio_de_pago: 'EFECTIVO',    importe: ef })
-      if (el > 0)  pagos.push({ medio_de_pago: 'ELECTRONICO', importe: el })
+      if (el > 0)  pagos.push({ medio_de_pago: medioPagoElectronico, importe: el, cuotas: cuotas })
     }
 
     // Construir payload
@@ -377,8 +400,12 @@ const cerrarTodos = () => {
         )}
       </div>
 
-      {alerta && <div className={`alerta alerta-${alerta.tipo}`}>{alerta.msg}</div>}
-
+      {alerta && (
+        <div className={`alerta alerta-${alerta.tipo}`}>
+          <span>{alerta.msg}</span>
+          <button className="alerta-cerrar" onClick={cerrarAlerta}>✕</button>
+        </div>
+      )}
       {/* ══════════════════════════════════════════════════════════════════════
           MODO CREACIÓN
       ══════════════════════════════════════════════════════════════════════ */}
@@ -609,6 +636,33 @@ const cerrarTodos = () => {
                   </select>
                 </div>
 
+                {medioPago === 'electronico' && (
+                  <> 
+                    <div className="form-group" style={{ maxWidth: 200 }}>
+                      <label>Forma de pago</label>
+                      <select value={medioPagoElectronico ?? ''} onChange={e => setMedioPagoElectronico(e.target.value)}>
+                        <option value="" disabled>Seleccionar...</option>
+                        <option value="QR">QR</option>
+                        <option value="DEBITO">Débito</option>
+                        <option value="TRANSFERENCIA">Transferencia</option>
+                        <option value="CREDITO">Crédito</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ maxWidth: 200 }}>
+                      <label>Cuotas</label>
+                      <select 
+                        value={cuotas} 
+                        onChange={e => setCuotas(Number(e.target.value))}
+                      >
+                        <option value={1}>1</option>
+                        <option value={3}>3</option>
+                        <option value={6}>6</option>
+                        <option value={12}>12</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+
                 {medioPago === 'ambos' && (
                   <>
                     <div className="form-group">
@@ -630,6 +684,25 @@ const cerrarTodos = () => {
                         onChange={e => setMontoElectronico(e.target.value)}
                         placeholder="$"
                       />
+                    </div>
+                    <div className="form-group" style={{ maxWidth: 200 }}>
+                      <label>Forma de pago</label>
+                      <select value={medioPagoElectronico ?? ''} onChange={e => setMedioPagoElectronico(e.target.value)}>
+                        <option value="" disabled>Seleccionar...</option>
+                        <option value="QR">QR</option>
+                        <option value="DEBITO">Débito</option>
+                        <option value="TRANSFERENCIA">Transferencia</option>
+                        <option value="CREDITO">Crédito</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ maxWidth: 200 }}>
+                      <label>Cuotas </label>
+                      <select value={cuotas} onChange={e => setCuotas(e.target.value)}>
+                        <option value={1}>1</option>
+                        <option value={3}>3</option>
+                        <option value={6}>6</option>
+                        <option value={12}>12</option>
+                      </select>
                     </div>
                   </>
                 )}

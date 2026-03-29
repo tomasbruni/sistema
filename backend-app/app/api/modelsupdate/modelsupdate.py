@@ -10,6 +10,7 @@ class LocalUpdate(SQLModel):
     nombre: Optional[str] = None
     direccion: Optional[str] = None
     tipo: Optional[str] = None
+    activo: Optional[bool] = None
 
 
 # =====================
@@ -43,21 +44,29 @@ class AccesorioUpdate(SQLModel):
 
 
 class TipoAccesorioUpdate(SQLModel):
-    nombre: str
+    nombre: Optional[str] = None
+    activo: Optional[bool] = True
 
 
 class SubtipoAccesorioUpdate(SQLModel):
     nombre: Optional[str] = None
     tipo_id: Optional[int] = None
+    activo: Optional[bool] = True
 
 
 class ModeloCelularUpdate(SQLModel):
-    marca: Optional[str] = None
-    modelo: Optional[str] = None
+    nombre: Optional[str] = None
+    activo: Optional[bool] = True
 
+
+class MarcaCelularUpdate(SQLModel):
+    nombre: Optional[str] = None
+    activo: Optional[bool] = True
+    
 
 class CelularUpdate(SQLModel):
-    modelo_id: Optional[int] = None
+    marca_celular_id: Optional[int] = None
+    modelo_celular_id: Optional[int] = None
     precio: Optional[int] = None
     local_id: Optional[int] = None
     estado: Optional[str] = None
@@ -112,3 +121,5 @@ class ReparacionUpdate(SQLModel):
 # =====================
 class MarcaUpdate(SQLModel):
     nombre: Optional[str] = None
+    activo: Optional[bool] = None
+

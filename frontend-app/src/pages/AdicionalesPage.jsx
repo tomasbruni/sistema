@@ -5,20 +5,22 @@ import SeccionTipos from '../components/secciones/SeccionTipos'
 import SeccionSubtipos from '../components/secciones/SeccionSubtipos'
 import SeccionMarcas from '../components/secciones/SeccionMarcas'
 import SeccionModelos from '../components/secciones/SeccionModelos'
+import SeccionMarcasCelulares from '../components/secciones/SeccionMarcasCelulares'
 import SeccionLocales from '../components/secciones/SeccionLocales'
 import SeccionComisiones from '../components/secciones/SeccionComisiones'
 
 const SECCIONES = [
-  { key: 'tipos',    label: 'Tipos de accesorio' },
-  { key: 'subtipos', label: 'Subtipos de accesorio' },
-  { key: 'marcas',   label: 'Marcas' },
-  { key: 'modelos',  label: 'Modelos de celular' },
-  { key: 'locales',  label: 'Locales' }, 
-  { key: 'comisiones', label: 'Comisiones' },
+  { key: 'tipos',           label: 'Tipos de accesorio' },
+  { key: 'subtipos',        label: 'Subtipos de accesorio' },
+  { key: 'marcas',          label: 'Marcas' },
+  { key: 'marcasCelulares', label: 'Marcas de celular' },
+  { key: 'modelos',         label: 'Modelos de celular' },
+  { key: 'locales',         label: 'Locales' },
+  { key: 'comisiones',      label: 'Comisiones' },
 ]
 
 export default function AdicionalesPage() {
-  const { alerta, mostrarAlerta } = useAlerta()
+  const { alerta, mostrarAlerta, cerrarAlerta } = useAlerta()
   const [seccion, setSeccion]     = useState('tipos')
 
   return (
@@ -27,7 +29,12 @@ export default function AdicionalesPage() {
         <h2>Adicionales</h2>
       </div>
 
-      {alerta && <div className={`alerta alerta-${alerta.tipo}`}>{alerta.msg}</div>}
+      {alerta && (
+        <div className={`alerta alerta-${alerta.tipo}`}>
+          <span>{alerta.msg}</span>
+          <button className="alerta-cerrar" onClick={cerrarAlerta}>✕</button>
+        </div>
+      )}
 
       <div className="adicionales-tabs">
         {SECCIONES.map(s => (
@@ -41,12 +48,13 @@ export default function AdicionalesPage() {
         ))}
       </div>
 
-      {seccion === 'tipos'    && <SeccionTipos    mostrarAlerta={mostrarAlerta} />}
-      {seccion === 'subtipos' && <SeccionSubtipos mostrarAlerta={mostrarAlerta} />}
-      {seccion === 'marcas'   && <SeccionMarcas   mostrarAlerta={mostrarAlerta} />}
-      {seccion === 'modelos'  && <SeccionModelos  mostrarAlerta={mostrarAlerta} />}
-      {seccion === 'locales'  && <SeccionLocales mostrarAlerta={mostrarAlerta} />}
-      {seccion === 'comisiones' && <SeccionComisiones mostrarAlerta={mostrarAlerta} />}
+      {seccion === 'tipos'           && <SeccionTipos          mostrarAlerta={mostrarAlerta} />}
+      {seccion === 'subtipos'        && <SeccionSubtipos       mostrarAlerta={mostrarAlerta} />}
+      {seccion === 'marcas'          && <SeccionMarcas         mostrarAlerta={mostrarAlerta} />}
+      {seccion === 'marcasCelulares' && <SeccionMarcasCelulares mostrarAlerta={mostrarAlerta} />}
+      {seccion === 'modelos'         && <SeccionModelos        mostrarAlerta={mostrarAlerta} />}
+      {seccion === 'locales'         && <SeccionLocales        mostrarAlerta={mostrarAlerta} />}
+      {seccion === 'comisiones'      && <SeccionComisiones     mostrarAlerta={mostrarAlerta} />}
     </div>
   )
 }

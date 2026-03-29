@@ -10,6 +10,7 @@ class LocalCreate(SQLModel):
     nombre: str
     direccion: str
     tipo: str
+    
 
 
 # =====================
@@ -28,7 +29,8 @@ class AccesorioCreate(SQLModel):
     precio: int
     tipo_id: int
     subtipo_id: Optional[int] = None
-    modelo_id: Optional[int] = None
+    marca_celular_id: Optional[int] = None
+    modelo_celular_id: Optional[int] = None
     marca_id: Optional[int] = None
     activo: bool = True
 
@@ -43,16 +45,19 @@ class SubtipoAccesorioCreate(SQLModel):
 
 
 class ModeloCelularCreate(SQLModel):
-    marca: str
-    modelo: str
+    marca_celular_id: int
+    nombre: str
 
+class MarcaCelularCreate(SQLModel):
+    nombre: str
 
 class MarcaCreate(SQLModel):
     nombre: str
 
 
 class CelularCreate(SQLModel):
-    modelo_id: int
+    modelo_celular_id: int
+    marca_celular_id: int
     imei: str
     precio: int
     local_id: int

@@ -13,6 +13,7 @@ from app.api.routers import (
     router_chips,
     router_marcas,
     router_modeloscelulares,
+    router_marcascelulares,
     router_stock,
     router_ventas,
     router_locales,
@@ -39,6 +40,7 @@ mainapp.include_router(router_celulares.router)
 mainapp.include_router(router_chips.router)
 mainapp.include_router(router_marcas.router)
 mainapp.include_router(router_modeloscelulares.router)
+mainapp.include_router(router_marcascelulares.router)
 mainapp.include_router(router_stock.router)
 mainapp.include_router(router_ventas.router)
 mainapp.include_router(router_locales.router)

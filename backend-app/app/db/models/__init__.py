@@ -15,6 +15,7 @@ from .models import (
     TipoAccesorio,
     SubtipoAccesorio,
     ModeloCelular,
+    MarcaCelular,
     Marca,
     Celular,
     Chip,
@@ -57,5 +58,6 @@ __all__ = [
     "PagoVenta",
     "ConfigComision",
     "IngresoLote",
-    "Transferencia"
+    "Transferencia",
+    "MarcaCelular"
 ]
