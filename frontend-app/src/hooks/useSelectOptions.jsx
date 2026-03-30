@@ -12,7 +12,7 @@ function useSelectOptions(names) {
   }
 
   const buscadorSelect = async (name, termino = "", extra = {}) => {
-    const { tipo_id = null, estado = null, marca_celular_id = null } = extra
+    const { tipo_id = null, estado = null, marca_celular_id = null, local_id = null } = extra
     let data = []
 
     if (name === "accesorios") {
@@ -46,7 +46,7 @@ function useSelectOptions(names) {
       setOption("modelos", data.map(m => ({ value: m.modelo_celular_id, label: m.nombre })))
     }
     else if (name === "celulares") {
-      data = await api.listarCelulares({ imei: termino, estado })
+      data = await api.listarCelulares({ imei: termino, estado, local_id })
       setOption("celulares", data.map(c => ({
         value: c.celular_id,
         label: `IMEI: ${c.imei} — $${c.precio.toLocaleString('es-AR')}`,

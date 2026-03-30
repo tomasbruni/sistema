@@ -23,6 +23,10 @@ export default function SearchableSelect({ options, value, onChange, onSearch, p
   const wrapperRef                = useRef(null)
   const listRef                   = useRef(null)
 
+
+  // inputVal representa el texto dentro del select, se sincroniza con la id al principio, para mostrar su label correspondiente,
+  // cuando escribo se desincroniza hasta que vuelva a seleccionar una opcion, en cuyo caso va a sincronizar el texto con el
+  // nombre de la opcion
   //restaurar es redundante
   const cerrar = ({ restaurar = false } = {}) => {
     setAbierto(false)

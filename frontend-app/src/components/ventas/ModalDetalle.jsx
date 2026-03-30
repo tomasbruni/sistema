@@ -82,7 +82,7 @@ function ModalDetalle({ detalles, admin, onClose }) {
               <table className="modal-table">
                 <thead>
                   <tr>
-                    <th>Modelo</th>
+                    <th>Marca y modelo</th>
                     <th>IMEI</th>
                     <th className="num">P. Lista</th>
                     <th className="num">P. Unitario</th>

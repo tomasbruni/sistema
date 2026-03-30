@@ -124,10 +124,10 @@ export default function CelularesPage() {
     setFiltroModelo(null)
     setListaModelosFiltro([])
     setPagina(0)
-    fetchCelulares(0, filtroLocalId, filtroEstado, nuevo, filtroModelo)
+    fetchCelulares(0, filtroLocalId, filtroEstado, nuevo, filtroMarca)
     if (nuevo) {
       api.listarModelos({ marca_celular_id: nuevo, buscar: '' })
-        .then(data => setListaModelosFiltro(data.map(s => ({ value: s.subtipo_id, label: s.nombre }))))
+        .then(data => setListaModelosFiltro(data.map(s => ({ value: s.modelo_celular_id, label: s.nombre }))))
         .catch(() => {})
     }
   }
@@ -349,11 +349,15 @@ export default function CelularesPage() {
 
             {marcasDisponibles.length > 0 && (
               <div className="filtros-row">
-                <span className="filtros-sublabel">Tipo:</span>
+                <span className="filtros-sublabel">Marca:</span>
                 <SearchableSelect
                   options={options.marcasCelulares}
                   value={filtroMarca}
-                  onChange={(val) => handleFiltroMarca(val)}
+                  onChange={(val) => {
+                    handleFiltroMarca(val) 
+                    setOption('modelos', [])
+                    if (val) buscadorSelect('modelos', '', { marca_celular_id: val })
+                  }}
                   onSearch={(t) => buscadorSelect('marcasCelulares', t)}
                   placeholder="Filtrar por marca"
                 />
@@ -362,13 +366,13 @@ export default function CelularesPage() {
 
             {filtroMarca && listaModelosFiltro.length > 0 && (
               <div className="filtros-subtipos">
-                <span className="filtros-sublabel">Subtipo:</span>
+                <span className="filtros-sublabel">Modelo:</span>
                 <div className='ss-filtro-subtipo'>
                   <SearchableSelect
                     options={options.modelos}
                     value={filtroModelo}
-                    onChange={(id) => handleFiltroModelo(id)}
-                    onSearch={(t) => buscadorSelect('modelos', t)}
+                    onChange={(id) => {handleFiltroModelo(id)}}
+                    onSearch={(t) => buscadorSelect('modelos', t, {marca_celular_id: filtroMarca})}
                     placeholder="Filtrar por modelo"
                   />
                 </div>

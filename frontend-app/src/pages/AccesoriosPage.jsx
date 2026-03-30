@@ -373,7 +373,7 @@ export default function AccesoriosPage() {
                     options={options.subtipos}
                     value={filtroSubtipoId}
                     onChange={(id) => handleFiltroSubtipo(id)}
-                    onSearch={(t) => buscadorSelect('subtipos', t)}
+                    onSearch={(t) => buscadorSelect('subtipos', t, {tipo_id: filtroTipoId})}
                     placeholder="Filtrar por subtipo"
                   />
                 </div>

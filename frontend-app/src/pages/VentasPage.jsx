@@ -503,7 +503,7 @@ export default function VentasPage() {
                     options={options.celulares}
                     value={formCelId}
                     onChange={handleSeleccionCel}
-                    onSearch={(t) => buscadorSelect('celulares', t, null, 'DISPONIBLE')}
+                    onSearch={(t) => buscadorSelect('celulares', t, { estado: 'DISPONIBLE', local_id: localId })}
                     placeholder="Buscar por IMEI..."
                   />
                 </div>

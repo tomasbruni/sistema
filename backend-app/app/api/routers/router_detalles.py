@@ -33,9 +33,10 @@ def detalles_de_venta(
     ).all()
 
     celulares = session.exec(
-        select(DetalleVentaCelular, ModeloCelular)
+        select(DetalleVentaCelular, MarcaCelular, ModeloCelular)
         .join(Celular, Celular.celular_id == DetalleVentaCelular.celular_id) #type: ignore
-        .join(ModeloCelular, ModeloCelular.modelo_id == Celular.modelo_id) #type: ignore
+        .join(MarcaCelular, MarcaCelular.marca_celular_id == Celular.marca_celular_id) #type: ignore
+        .join(ModeloCelular,ModeloCelular.modelo_celular_id == Celular.modelo_celular_id) #type: ignore
         .where(DetalleVentaCelular.venta_id == venta_id)
     ).all()
 
@@ -57,10 +58,10 @@ def detalles_de_venta(
         "celulares": [
             {
                 **detalle.model_dump(),
-                "marca": modelo.marca,
-                "modelo": modelo.modelo,
+                "marca": marca.nombre,
+                "modelo": modelo.nombre,
             }
-            for detalle, modelo in celulares
+            for detalle, marca, modelo in celulares
         ],
         "chips": [
             {
