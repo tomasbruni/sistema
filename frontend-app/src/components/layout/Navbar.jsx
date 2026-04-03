@@ -7,11 +7,12 @@ export default function Navbar() {
   return (
     <nav className="navbar">
       <ul className="navbar-links">
-        <li><NavLink to="/">Inicio</NavLink></li>
         <li><NavLink to="/ventas">Ventas</NavLink></li>
         <li><NavLink to="/stock">Stock</NavLink></li>
+        <li><NavLink to="/transferencias">Transferencias</NavLink></li>
         {rol === 'admin' && (
           <>
+            <li><NavLink to="/ingresos">Ingresos</NavLink></li>
             <li><NavLink to="/accesorios">Accesorios</NavLink></li>
             <li><NavLink to="/adicionales">Adicionales</NavLink></li>
             <li><NavLink to="/movimientos">Movimientos</NavLink></li>

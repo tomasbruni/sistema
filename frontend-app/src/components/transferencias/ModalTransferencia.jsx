@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 
-function ModalIngresoLote({ datos, onClose }) {
+function ModalTransferencia({ datos, onClose }) {
   const backdropRef = useRef(null)
 
   useEffect(() => {
@@ -11,17 +11,14 @@ function ModalIngresoLote({ datos, onClose }) {
 
   if (!datos) return null
 
-  const { ingreso_lote_id, fecha, nombre_receptor, movimientos = [] } = datos
+  const { transferencia_id, fecha, nombre_usuario, local_origen, local_destino, observaciones, items = [] } = datos
 
-  const totalUnidades = movimientos.reduce((s, m) => s + m.cantidad, 0)
+  const totalUnidades = items.reduce((s, i) => s + i.cantidad, 0)
 
   const fechaFmt = fecha
     ? new Intl.DateTimeFormat("es-AR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
+        day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
       }).format(new Date(fecha))
     : "—"
 
@@ -33,40 +30,39 @@ function ModalIngresoLote({ datos, onClose }) {
     >
       <div className="modal-panel">
 
-        {/* Header */}
         <div className="modal-header">
-          <h2>Ingreso de lote #{ingreso_lote_id}</h2>
+          <h2>Transferencia #{transferencia_id}</h2>
+          <div>
+            <p><strong>Fecha:</strong> {fechaFmt}</p>
+            <p><strong>Emisor:</strong> {nombre_usuario ?? "—"}</p>
+            <p><strong>Origen:</strong> {local_origen ?? "—"}</p>
+            <p><strong>Destino:</strong> {local_destino ?? "—"}</p>
+            {observaciones && <p><strong>Observaciones:</strong> {observaciones}</p>}
+          </div>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 
-        {/* Meta */}
         <div className="modal-body">
-          <div style={{ display: "flex", gap: "2rem", marginBottom: "1rem", fontSize: "0.9rem", color: "var(--text-muted, #888)" }}>
-            <span><strong>Fecha:</strong> {fechaFmt}</span>
-            <span><strong>Receptor:</strong> {nombre_receptor ?? "—"}</span>
-          </div>
-
-          {/* Movimientos */}
-          <p className="modal-section-title">Artículos ingresados</p>
           <table className="modal-table">
             <thead>
               <tr>
-                <th>Accesorio</th>
+                <th>SKU</th>
+                <th>Producto</th>
                 <th className="num">Cantidad</th>
               </tr>
             </thead>
             <tbody>
-              {movimientos.map((m, i) => (
+              {items.map((item, i) => (
                 <tr key={i}>
-                  <td>{m.nombre_accesorio}</td>
-                  <td className="num">+{m.cantidad}</td>
+                  <td>{item.sku}</td>
+                  <td>{item.nombre}</td>
+                  <td className="num">{item.cantidad}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        {/* Footer */}
         <div className="modal-footer">
           <span className="modal-footer-label">Total unidades</span>
           <span className="modal-footer-total">{totalUnidades}</span>
@@ -77,4 +73,4 @@ function ModalIngresoLote({ datos, onClose }) {
   )
 }
 
-export default ModalIngresoLote
+export default ModalTransferencia

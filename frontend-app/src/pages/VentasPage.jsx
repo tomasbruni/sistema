@@ -4,7 +4,7 @@ import './VentasPage.css'
 import { api, LIMIT } from '../api/api'
 import { useAlerta } from '../hooks/useAlerta'
 import SearchableSelect from '../components/SearchableSelect/SearchableSelect'
-import useSelectOptions from '../hooks/useSelectOptions/'
+import  useSelectOptions from '../hooks/useSelectOptions/'
 import {useAuth} from '../hooks/useAuth'
 import { useModalDetalle } from '../hooks/ventas/useModalDetalles'
 import ModalDetalle from '../components/ventas/ModalDetalle'
@@ -73,14 +73,60 @@ export default function VentasPage() {
 
   const [cuotas, setCuotas] = useState(1);
   const [medioPagoElectronico, setMedioPagoElectronico] = useState("QR");
+  
+  // ─── Caja diaria ──────────────────────────────────────────────────────────────
+  const [fechaCaja, setFechaCaja] = useState(() => new Date().toISOString().slice(0, 10))
+  const [loadingCaja, setLoadingCaja] = useState(false)
+
+  const handleGenerarCajaDiaria = async () => {
+    if (!localId) { mostrarAlerta('error', 'Seleccioná un local.'); return }
+    setLoadingCaja(true)
+    try {
+      const blob = await api.generarCajaDiaria({
+        local_id: localId,
+        ...(rol === 'admin' && { usuario_id: usuarioId }),
+        fecha: fechaCaja,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `caja_${fechaCaja}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      mostrarAlerta('error', `Error al generar caja: ${err.message}`)
+    } finally {
+      setLoadingCaja(false)
+    }
+  }
+
+  // ─── Formulario egresos ────────────────────────────────────────────────────────
+  const [formEgresoAbierto, setFormEgresoAbierto] = useState(false);
+  const [montoEgreso, setMontoEgreso] = useState('');
+  const [descripcionEgreso, setDescripcionEgreso] = useState('');
+
+  const abrirFormEgresos = () => {
+    setFormEgresoAbierto(true)
+  }
+
+  const cerrarFormEgresos = () => {
+    setFormEgresoAbierto(false)
+    setMontoEgreso('')
+    setDescripcionEgreso('')
+  }
 
 
   // ─── Efectos ──────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchUsuarios()
     fetchLocales()
-    fetchVentas(0)
   }, [])
+
+  useEffect(() => {
+    if (localId !== null) {
+      fetchVentas(0)
+    }
+  }, [localId])
 
   // ─── Usuarios ──────────────────────────────────────────────────────────────
   const fetchUsuarios = async () => {
@@ -108,9 +154,9 @@ export default function VentasPage() {
   const fetchVentas = async (pag) => {
     setLoadingLista(true)
     try {
-      const data = await api.listarVentas({ skip: pag * LIMIT, limit: LIMIT + 1 })
-      setHayMas(data.length > LIMIT)
-      setVentas(data.slice(0, LIMIT))
+      const data = await api.listarVentas({ skip: pag * 10, limit: 10 + 1, local_id: localId })
+      setHayMas(data.length > 10)
+      setVentas(data.slice(0, 10))
     } catch (err) {
       mostrarAlerta('error', `Error al cargar ventas: ${err.message}`)
     } finally {
@@ -123,6 +169,9 @@ export default function VentasPage() {
     fetchVentas(nueva)
   }
 
+  // ─── Formulario egresos ────────────────────────────────────────────────────────
+
+
   // ─── Modo creación ────────────────────────────────────────────────────────
   const abrirCreacion = (tipo) => {
     setTipoOperacion(tipo)
@@ -133,6 +182,7 @@ export default function VentasPage() {
     setMontoElectronico('')
     setMedioPagoElectronico('QR')
     setCuotas(1)
+    cerrarFormEgresos()
     setModo('creacion')
   }
 
@@ -165,7 +215,7 @@ export default function VentasPage() {
     cerrarTodos()
     setFormCelAbierto(true)
     setFormCelId(null); setFormCelData(null); setFormCelPrecio('')
-    buscadorSelect('chips', '', null, 'DISPONIBLE')
+    buscadorSelect('celulares', { estado: tipoOperacion === 'VENTA' ? 'DISPONIBLE' : 'VENDIDO' , local_id: localId })
   }
   const cerrarFormCel = () => {
     setFormCelAbierto(false)
@@ -176,7 +226,7 @@ export default function VentasPage() {
     cerrarTodos()
     setFormChipAbierto(true)
     setFormChipId(null); setFormChipData(null); setFormChipPrecio('')
-    buscadorSelect('chips', '', null, 'DISPONIBLE')
+    buscadorSelect('chips', '',  {estado: tipoOperacion === 'VENTA' ? 'DISPONIBLE' : 'VENDIDO' , local_id: localId})
   }
   const cerrarFormChip = () => {
     setFormChipAbierto(false)
@@ -376,6 +426,40 @@ export default function VentasPage() {
     }
   }
 
+  const handleConfirmarEgreso = async () => {
+    if (!montoEgreso || !descripcionEgreso) {
+      mostrarAlerta('error', 'Ingresar monto y descripcion')
+      return
+    };
+
+    if (!localId) {
+      mostrarAlerta('error', 'No hay un local seleccionado.')
+      return
+    }
+    if (rol == 'admin' && !usuarioId) {
+      mostrarAlerta('error', 'No hay usuario seleccionado.')
+      return
+    }
+    console.log("CROBAL")
+    try {
+      await api.crearEgreso({
+        monto: parseInt(montoEgreso),
+        descripcion: descripcionEgreso,
+        local_id: localId,
+        ...(rol === 'admin' && { usuario_id: usuarioId }),
+      });
+      mostrarAlerta('success', 'Egreso registrado correctamente')
+      setLoadingConfirmar(true)
+      setMontoEgreso('');
+      setDescripcionEgreso('');
+      cerrarFormEgresos();
+      } catch (err) {
+        mostrarAlerta('error', `Error: ${err.message}`)
+      } finally {
+        setLoadingConfirmar(false)
+    }
+  };
+
   // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
     <div className="page-container">
@@ -391,6 +475,7 @@ export default function VentasPage() {
           <div className="page-header-acciones">
             <button className="btn btn-primary"   onClick={() => abrirCreacion('VENTA')}>+ Nueva venta</button>
             <button className="btn btn-devolucion" onClick={() => abrirCreacion('DEVOLUCION')}>↩ Nueva devolución</button>
+            <button className="btn btn-egreso" onClick={() => abrirFormEgresos()}>Nuevo egreso</button>
           </div>
         )}
         {modo === 'creacion' && (
@@ -399,6 +484,58 @@ export default function VentasPage() {
           </button>
         )}
       </div>
+
+      {/* FORMULARIO EGRESO */}
+      {modo === 'listado' && formEgresoAbierto &&  
+        <div className="form-card">
+          <div className='form-row'>
+            <div className="form-group" style={{ maxWidth: 280 }}>
+              <label>Local</label>
+              <select value={localId ?? ''} onChange={e => setLocalId(parseInt(e.target.value))}>
+                {locales.map(l => (
+                  <option key={l.local_id} value={l.local_id}>{l.nombre}</option>
+                ))}
+              </select>
+            </div>
+
+            {rol === 'admin' && 
+            <div className='form-group'>
+              <label>Vendedor</label>
+              <select value={usuarioId ?? ''} onChange={e => setUsuarioId(parseInt(e.target.value))}>
+                {usuarios.map(l => (
+                  <option key={l.usuario_id} value={l.usuario_id}>{l.nombre}</option>
+                ))}
+              </select>
+            </div>}
+
+            <div className="form-group" style={{ maxWidth: 280 }}>
+              <label>Monto:</label>
+              <input
+                type="number" min={1}
+                value={montoEgreso}
+                onChange={e => setMontoEgreso(e.target.value)}
+                placeholder="$"
+              />
+            </div>
+
+            <div className="form-group" style={{ maxWidth: 280 }}>
+              <label>Descripcion:</label>
+              <input
+                type='text'
+                value={descripcionEgreso}
+                onChange={e => setDescripcionEgreso(e.target.value)}
+                placeholder="$"
+              />
+            </div>
+            
+            <div className="form-actions">
+              <button className="btn btn-secondary" onClick={handleConfirmarEgreso}>Confirmar</button>
+              <button className="btn btn-primary"   onClick={cerrarFormEgresos}>Cancelar</button>
+            </div>
+
+          </div>
+        </div>
+      }
 
       {alerta && (
         <div className={`alerta alerta-${alerta.tipo}`}>
@@ -503,7 +640,7 @@ export default function VentasPage() {
                     options={options.celulares}
                     value={formCelId}
                     onChange={handleSeleccionCel}
-                    onSearch={(t) => buscadorSelect('celulares', t, { estado: 'DISPONIBLE', local_id: localId })}
+                    onSearch={(t) => buscadorSelect('celulares', t, { estado: tipoOperacion === 'VENTA' ? 'DISPONIBLE' : 'VENDIDO' , local_id: localId })}
                     placeholder="Buscar por IMEI..."
                   />
                 </div>
@@ -535,7 +672,7 @@ export default function VentasPage() {
                     options={options.chips}
                     value={formChipId}
                     onChange={handleSeleccionChip}
-                    onSearch={(t) => buscadorSelect('chips', t, null, 'DISPONIBLE')}
+                    onSearch={() => buscadorSelect('chips', '',  {estado: tipoOperacion === 'VENTA' ? 'DISPONIBLE' : 'VENDIDO' , local_id: localId})}
                     placeholder="Buscar por número de serie..."
                   />
                 </div>
@@ -811,6 +948,39 @@ export default function VentasPage() {
               )}
             </>
           )}
+
+          {/* ── Caja diaria ── */}
+          <div className="caja-diaria-footer">
+            <div className="form-group" style={{ maxWidth: 200 }}>
+              <label>Local</label>
+              <select value={localId ?? ''} onChange={e => setLocalId(parseInt(e.target.value))}>
+                {locales.map(l => (
+                  <option key={l.local_id} value={l.local_id}>{l.nombre}</option>
+                ))}
+              </select>
+            </div>
+            {rol === 'admin' && (
+              <div className="form-group" style={{ maxWidth: 200 }}>
+                <label>Vendedor</label>
+                <select value={usuarioId ?? ''} onChange={e => setUsuarioId(parseInt(e.target.value))}>
+                  {usuarios.map(u => (
+                    <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="form-group" style={{ maxWidth: 180 }}>
+              <label>Fecha</label>
+              <input type="date" value={fechaCaja} onChange={e => setFechaCaja(e.target.value)} />
+            </div>
+            <button
+              className="btn btn-secondary"
+              onClick={handleGenerarCajaDiaria}
+              disabled={loadingCaja}
+            >
+              {loadingCaja ? 'Generando...' : 'Generar caja diaria'}
+            </button>
+          </div>
         </>
       )}
     </div>

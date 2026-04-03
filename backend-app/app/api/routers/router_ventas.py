@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from sqlalchemy import exc
+from typing import Optional
 
 from app.db.session import get_session
 from app.db.models import (
@@ -20,7 +21,7 @@ router = APIRouter(
 )
 
 MEDIOS_DE_PAGO_VALIDOS = {"EFECTIVO", "DEBITO", "CREDITO", "QR", "TRANSFERENCIA"}
-
+TIPOS_DE_VENTAS_VALIDOS = {"VENTA", "DEVOLUCION"}
 
 def _calcular_comision(config: ConfigComision | None, precio_unitario: int, cantidad: int = 1) -> int:
     """Calcula el importe de comisión. Si no hay config retorna 0."""
@@ -49,7 +50,13 @@ def crear_venta(
     - Actualiza estado de celulares y chips a VENDIDO
     - En DEVOLUCION: revierte stock y estados, guarda monto_total negativo
     """
-
+    
+    if venta_data.tipo.upper() not in TIPOS_DE_VENTAS_VALIDOS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Tipo de venta inválido: Válidos: {TIPOS_DE_VENTAS_VALIDOS}"
+        )
+    
     es_devolucion = venta_data.tipo.upper() == "DEVOLUCION"
 
     # ── Validar medios de pago ────────────────────────────────────────────────
@@ -348,6 +355,7 @@ def crear_venta(
 def listar_ventas(
     skip: int = 0,
     limit: int = 20,
+    local_id: Optional[int] = None,
     session: Session = Depends(get_session)
 ):
     """
@@ -355,16 +363,25 @@ def listar_ventas(
     Devuelve fecha, tipo, monto_total y pagos de cada venta.
     Para ver los detalles de productos usar GET /ventas/{venta_id}.
     """
-    ventas = session.exec(
-        select(Venta).order_by(Venta.fecha_ingreso.desc()).offset(skip).limit(limit)  # type: ignore
-    ).all()
- 
+
+    # 🔹 Query base
+    query = select(Venta)
+
+    # 🔹 Filtro opcional
+    if local_id is not None:
+        query = query.where(Venta.local_id == local_id)
+
+    # 🔹 Orden + paginación
+    query = query.order_by(Venta.fecha_ingreso.desc()).offset(skip).limit(limit)  # type: ignore
+
+    ventas = session.exec(query).all()
+
     resultado = []
     for venta in ventas:
         pagos = session.exec(
             select(PagoVenta).where(PagoVenta.venta_id == venta.venta_id)
         ).all()
- 
+
         resultado.append({
             "venta_id":      venta.venta_id,
             "fecha_ingreso": venta.fecha_ingreso,
@@ -375,7 +392,7 @@ def listar_ventas(
                 for p in pagos
             ],
         })
- 
+
     return resultado
  
  

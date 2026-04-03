@@ -57,6 +57,80 @@ export const logout = () => localStorage.removeItem('token')
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 export const api = {
+// ─── LISTAR ───────────────────────────────────────────────────
+// ─── LISTAR EGRESOS ───────────────────────────────────────
+  listarEgresos: ({
+    skip = 0,
+    limit = LIMIT,
+    fecha_desde = null,
+    fecha_hasta = null,
+    local_id = null,
+    usuario_id = null,
+  } = {}) =>
+    authFetch(
+      `${BASE_URL}/egresos/?${buildParams({
+        skip,
+        limit,
+        fecha_desde,
+        fecha_hasta,
+        local_id,
+        usuario_id,
+      })}`
+    ).then(handleResponse),
+
+
+  // ─── CREAR EGRESO ─────────────────────────────────────────
+  crearEgreso: ({
+    monto,
+    descripcion,
+    local_id,
+    usuario_id = null, // admin opcional
+  }) =>
+    authFetch(`${BASE_URL}/egresos/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        monto,
+        descripcion,
+        local_id,
+        ...(usuario_id && { usuario_id }),
+      }),
+    }).then(handleResponse),
+
+
+  // ─── OBTENER EGRESO ───────────────────────────────────────
+  obtenerEgreso: ({ egreso_id }) =>
+    authFetch(`${BASE_URL}/egresos/${egreso_id}`)
+      .then(handleResponse),
+
+
+  // ─── ELIMINAR EGRESO ──────────────────────────────────────
+  eliminarEgreso: ({ egreso_id }) =>
+    authFetch(`${BASE_URL}/egresos/${egreso_id}`, {
+      method: 'DELETE',
+    }).then(handleResponse),
+
+
+  // ─── ACTUALIZAR EGRESO ────────────────────────────────────
+  actualizarEgreso: ({
+    egreso_id,
+    monto = null,
+    descripcion = null,
+    local_id = null,
+  }) =>
+    authFetch(`${BASE_URL}/egresos/${egreso_id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...(monto !== null && { monto }),
+        ...(descripcion !== null && { descripcion }),
+        ...(local_id !== null && { local_id }),
+      }),
+    }).then(handleResponse),
 
   // INGRESOS
   listarIngresos: ({ skip = 0, limit = LIMIT, fecha_desde = null, fecha_hasta = null, local_id = null } = {}) =>
@@ -64,6 +138,26 @@ export const api = {
 
   getDetalleIngreso: (ingreso_lote_id) =>
     authFetch(`${BASE_URL}/ingresos/${ingreso_lote_id}`).then(handleResponse),
+
+  generarIngresoPdf: (ingreso_lote_id) =>
+    authFetch(`${BASE_URL}/ingresos/${ingreso_lote_id}/pdf`)
+      .then(res => {
+        if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) })
+        return res.blob()
+      }),
+
+  listarTransferencias: ({ skip = 0, limit = LIMIT, fecha_desde = null, fecha_hasta = null, local_origen_id = null, local_destino_id = null, usuario_id = null } = {}) =>
+    authFetch(`${BASE_URL}/transferencias/?${buildParams({ skip, limit, fecha_desde, fecha_hasta, local_origen_id, local_destino_id, usuario_id })}`).then(handleResponse),
+
+  getDetalleTransferencia: (transferencia_id) =>
+    authFetch(`${BASE_URL}/transferencias/${transferencia_id}`).then(handleResponse),
+
+  generarTransferenciaPdf: (transferencia_id) =>
+    authFetch(`${BASE_URL}/transferencias/${transferencia_id}/pdf`)
+      .then(res => {
+        if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) })
+        return res.blob()
+      }),
 
   // DETALLE VENTAS
   getDetallesVenta: (ventaId) =>
@@ -105,8 +199,10 @@ export const api = {
   listarChips: ({ skip = 0, limit = LIMIT, local_id = null, estado = null, compania = null, buscar = null } = {}) =>
     authFetch(`${BASE_URL}/chips/?${buildParams({ skip, limit, local_id, estado, compania, buscar })}`).then(handleResponse),
 
-  listarVentas: ({ skip = 0, limit = LIMIT } = {}) =>
-    authFetch(`${BASE_URL}/ventas/?${buildParams({ skip, limit })}`).then(handleResponse),
+  listarVentas: ({ skip = 0, limit = LIMIT, local_id = null } = {}) =>
+    authFetch(
+      `${BASE_URL}/ventas/?${buildParams({ skip, limit, local_id })}`
+    ).then(handleResponse),
 
   listarUsuarios: () =>
     authFetch(`${BASE_URL}/usuarios/`).then(handleResponse),
@@ -224,6 +320,15 @@ export const api = {
         if (!res.ok) throw new Error(`Error ${res.status}`)
         return res.blob()
       }),
+
+  // CAJA DIARIA
+  generarCajaDiaria: ({ local_id, usuario_id = null, fecha = null, desde = null, hasta = null }) =>
+    authFetch(
+      `${BASE_URL}/caja-diaria/pdf?${buildParams({ local_id, ...(usuario_id && { usuario_id }), fecha, desde, hasta })}`
+    ).then(res => {
+      if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) })
+      return res.blob()
+    }),
 
   // VENTAS
   crearVenta: (body) =>

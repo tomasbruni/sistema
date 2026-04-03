@@ -119,7 +119,7 @@ def listar_stock(
     statement = (
         select(StockAccesorio, Accesorio, Local)
         .join(Accesorio, StockAccesorio.accesorio_id == Accesorio.accesorio_id) #type: ignore
-        .join(Local, StockAccesorio.local_id == Local.local_id) #type: ignore
+        .join(Local, StockAccesorio.local_id == Local.local_id).where(Local.activo == True) #type: ignore
     )
 
     if buscar:
@@ -378,6 +378,7 @@ def ingresar_lote(
             usuario_id=current_user.usuario_id,
             receptor_id=ingreso_lote.receptor_id,
             observaciones=ingreso_lote.observaciones or None,
+            local_id=ingreso_lote.local_id,
         )
         session.add(lote)
         session.flush()  # obtenemos ingreso_lote_id

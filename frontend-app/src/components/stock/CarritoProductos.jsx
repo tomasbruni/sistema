@@ -21,7 +21,7 @@ export default function CarritoProductos({
         <table className="acc-table">
           <thead>
             <tr>
-              <th>SKU</th>
+              <th>CODIGO</th>
               <th>Producto</th>
               <th>Cantidad</th>
               <th></th>

@@ -19,7 +19,7 @@ function ModalDetalle({ detalles, admin, onClose }) {
 
   if (!detalles) return null
 
-  const { venta_id, accesorios = [], celulares = [], chips = [] } = detalles
+  const { venta_id, vendedor, accesorios = [], celulares = [], chips = [] } = detalles
 
   const total = [
     ...accesorios.map((a) => a.precio_unitario * a.cantidad),
@@ -38,6 +38,7 @@ function ModalDetalle({ detalles, admin, onClose }) {
         {/* Header */}
         <div className="modal-header">
           <h2>Detalle de venta #{venta_id}</h2>
+          <p>{vendedor}</p>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
 

@@ -22,6 +22,18 @@
   transition: opacity 0.15s;
 }
 
+.btn-egreso {
+  background: #626d00;
+  color: #fff;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
 .btn-devolucion:hover:not(:disabled) { opacity: 0.85; }
 .btn-devolucion:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -125,4 +137,14 @@
 
 .form-card-ventas {
   display: flex;
+}
+
+/* ── Caja diaria footer ──────────────────────────────────────────────────── */
+.caja-diaria-footer {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #ddd;
 }

@@ -9,6 +9,7 @@ from .models import (
     Venta,
     PagoVenta,
     ConfigComision,
+    EgresoCaja,
 
     # Productos
     Accesorio,
@@ -59,5 +60,6 @@ __all__ = [
     "ConfigComision",
     "IngresoLote",
     "Transferencia",
-    "MarcaCelular"
+    "MarcaCelular",
+    "EgresoCaja",
 ]

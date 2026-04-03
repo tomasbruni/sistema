@@ -178,6 +178,7 @@ class IngresoLote(SQLModel, table=True):
     )
     receptor_id: Optional[int] = Field(default=None, foreign_key="usuarios.usuario_id")
     usuario_id: Optional[int] = Field(default=None, foreign_key="usuarios.usuario_id")
+    local_id: Optional[int] = Field(default=None, foreign_key="locales.local_id")
     observaciones: Optional[str]
 
 
@@ -219,6 +220,20 @@ class PagoVenta(SQLModel, table=True):
     medio_de_pago: str  # EFECTIVO | DEBITO | CREDITO | QR | TRANSFERENCIA
     importe: int
     cuotas: Optional[int]
+
+
+class EgresoCaja(SQLModel, table=True):
+    __tablename__ = "egresos_cajas"  # type: ignore
+
+    egreso_caja_id: Optional[int] = Field(default=None, primary_key=True)
+    fecha: Optional[datetime] = Field(default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+    monto: int
+    descripcion: str   # "plomero", "cambio chico", etc.
+    medio_pago: Optional[str]   # EFECTIVO (casi siempre)
+    local_id: int = Field(foreign_key="locales.local_id")
+    usuario_id: int = Field(foreign_key="usuarios.usuario_id")
  
 
 # =====================
@@ -300,9 +315,18 @@ class Marca(SQLModel, table=True):
     nombre: str
     activo: bool = Field(default = True)
 
+
 class Proveedor(SQLModel, table=True):
     __tablename__ = "proveedores" #type: ignore
     
     proveedor_id: Optional[int] = Field(default=None, primary_key=True)
+    nombre: str 
+    activo: bool = Field(default = True)
+
+
+class CompaniaChip(SQLModel, table=True):
+    __tablename__ = "companias_chips" #type: ignore
+
+    compania_chip_id: Optional[int] = Field(default=None, primary_key=True)
     nombre: str 
     activo: bool = Field(default = True)

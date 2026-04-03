@@ -23,7 +23,10 @@ from app.api.routers import (
     router_reportes,
     router_auth,
     router_detalles,
-    router_ingresos)
+    router_ingresos,
+    router_egresos_caja,
+    router_caja_diaria,
+    router_transferencias)
 
 from app.db.models import *
 from app.db.session import get_session, SessionDep
@@ -51,6 +54,9 @@ mainapp.include_router(router_reportes.router)
 mainapp.include_router(router_auth.router)
 mainapp.include_router(router_detalles.router)
 mainapp.include_router(router_ingresos.router)
+mainapp.include_router(router_egresos_caja.router)
+mainapp.include_router(router_caja_diaria.router)
+mainapp.include_router(router_transferencias.router)
 
 #esto de abajo es para permitir leer el json del doc
 origins = [

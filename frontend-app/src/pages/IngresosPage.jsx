@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import {useAlerta} from '../hooks/useAlerta'
 import {LIMIT, api} from '../api/api'
-import { formatFecha } from '../helpers/formats'; 
+import { formatFecha } from '../helpers/formats'
+import { descargarIngresoPdf } from '../helpers/pdf'
 import { useModalDetalle } from '../hooks/ventas/useModalDetalles'; 
+import ModalIngresoLote from '../components/ingresos/ModalIngresoLote';
 
 
 function IngresosPage() {
   const { alerta, mostrarAlerta } = useAlerta()
+  const [loadingPdf, setLoadingPdf] = useState(null) // ingreso_lote_id en curso
+
+  const descargarPdf = async (ingreso_lote_id) => {
+    setLoadingPdf(ingreso_lote_id)
+    await descargarIngresoPdf(ingreso_lote_id, (msg) => mostrarAlerta('error', msg))
+    setLoadingPdf(null)
+  }
   const [ingresos, setIngresos]         = useState([])
   const [loadingLista, setLoadingLista] = useState(false)
   const { modalAbierto, modalItem, loadingModal, abrirModal, cerrarModal } = useModalDetalle(api.getDetalleIngreso)
@@ -47,46 +56,56 @@ function IngresosPage() {
   const irAPagina = (nueva) => { setPagina(nueva); fetchIngresos(nueva) }
 
   return (
-    <div className="page-wrapper">
+    <div className="page-container">
       {alerta}
-
-      {/* Filtros */}
-      <div className="filtros-bar">
-        <select
-          className="filtro-select"
-          value={filtroLocalId}
-          onChange={(e) => {
-            setFiltroLocalId(e.target.value)
-            fetchIngresos(0, { local_id: e.target.value || null })
-            setPagina(0)
-          }}
-        >
-          <option value="">Todos los locales</option>
-          {locales.map(l => (
-            <option key={l.local_id} value={l.local_id}>{l.nombre}</option>
-          ))}
-        </select>
-
-        <input
-          type="date"
-          className="filtro-input"
-          value={fechaDesde}
-          onChange={(e) => {
-            setFechaDesde(e.target.value)
-            fetchIngresos(0, { fecha_desde: e.target.value || null })
-            setPagina(0)
-          }}
-        />
-        <input
-          type="date"
-          className="filtro-input"
-          value={fechaHasta}
-          onChange={(e) => {
-            setFechaHasta(e.target.value)
-            fetchIngresos(0, { fecha_hasta: e.target.value || null })
-            setPagina(0)
-          }}
-        />
+      <div className='page-header'>
+        <h2>Ingresos</h2>
+        {/* Filtros */}
+        <div className="form-row" style={{padding: 5}}>
+          <div className="form-group" style={{ maxWidth: 200 }}>
+            <label>Local</label>
+            <select
+              className="filtro-select"
+              value={filtroLocalId}
+              onChange={(e) => {
+                setFiltroLocalId(e.target.value)
+                fetchIngresos(0, { local_id: e.target.value || null })
+                setPagina(0)
+              }}
+            >
+              <option value="">Todos</option>
+              {locales.map(l => (
+                <option key={l.local_id} value={l.local_id}>{l.nombre}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group" style={{ maxWidth: 200 }}>
+            <label>Desde</label>
+            <input
+              type="date"
+              className="filtro-input"
+              value={fechaDesde}
+              onChange={(e) => {
+                setFechaDesde(e.target.value)
+                fetchIngresos(0, { fecha_desde: e.target.value || null })
+                setPagina(0)
+              }}
+            />
+          </div>
+          <div className="form-group" style={{ maxWidth: 200 }}>
+            <label>Hasta</label>
+            <input
+            type="date"
+            className="filtro-input"
+            value={fechaHasta}
+            onChange={(e) => {
+              setFechaHasta(e.target.value)
+              fetchIngresos(0, { fecha_hasta: e.target.value || null })
+              setPagina(0)
+            }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Tabla */}
@@ -103,6 +122,7 @@ function IngresosPage() {
                   <th>#</th>
                   <th>Fecha</th>
                   <th>Receptor</th>
+                  <th>Local</th>
                   <th>Observaciones</th>
                   <th>Detalles</th>
                 </tr>
@@ -113,14 +133,22 @@ function IngresosPage() {
                     <td>{ing.ingreso_lote_id}</td>
                     <td>{formatFecha(ing.fecha)}</td>
                     <td>{ing.nombre_receptor ?? '—'}</td>
+                    <td>{ing.local ?? '—'}</td>
                     <td className="obs-cell">{ing.observaciones ?? '—'}</td>
-                    <td>
+                    <td style={{ display: 'flex', gap: 6 }}>
                       <button
                         className="btn-ver-detalle"
                         onClick={() => abrirModal(ing.ingreso_lote_id)}
                         disabled={loadingModal}
                       >
                         {loadingModal ? 'Cargando...' : 'Ver detalle'}
+                      </button>
+                      <button
+                        className="btn-ver-detalle"
+                        onClick={() => descargarPdf(ing.ingreso_lote_id)}
+                        disabled={loadingPdf === ing.ingreso_lote_id}
+                      >
+                        {loadingPdf === ing.ingreso_lote_id ? 'Generando...' : 'PDF'}
                       </button>
                     </td>
                   </tr>

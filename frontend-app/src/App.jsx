@@ -10,6 +10,8 @@ import VentasPage from './pages/VentasPage'
 import CelularesPage from './pages/CelularesPage'
 import ChipsPage from './pages/ChipsPage'
 import ReportesPage from './pages/ReportesPage'
+import IngresosPage from './pages/IngresosPage'
+import TransferenciasPage from './pages/TransferenciasPage'
 
 function RutaPrivada({ children }) {
   const { token } = useAuth()
@@ -30,9 +32,11 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<AuthPage />} />
         <Route path="/" element={<RutaPrivada><Layout /></RutaPrivada>}>
-          <Route index element={<h1>HOLA</h1>} />
+          <Route index element={<Navigate to="ventas" replace />} />
           <Route path="ventas" element={<VentasPage />} />
-          <Route path="stock"  element={<StockPage />} />
+          <Route path="stock"         element={<StockPage />} />
+          <Route path="transferencias" element={<TransferenciasPage />} />
+          <Route path="ingresos"  element={<RutaAdmin><IngresosPage /></RutaAdmin>} />
           <Route path="accesorios"  element={<RutaAdmin><AccesoriosPage /></RutaAdmin>} />
           <Route path="adicionales" element={<RutaAdmin><AdicionalesPage /></RutaAdmin>} />
           <Route path="movimientos" element={<RutaAdmin><MovimientosPage /></RutaAdmin>} />

@@ -54,7 +54,7 @@ function useSelectOptions(names) {
       })))
     }
     else if (name === "chips") {
-      data = await api.listarChips({ buscar: termino, estado })
+      data = await api.listarChips({ buscar: termino, estado, local_id })
       setOption("chips", data.map(c => ({
         value: c.chip_id,
         label: `${c.compania} — Serie: ${c.numero_serie} — $${c.precio.toLocaleString('es-AR')}`,

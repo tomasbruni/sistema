@@ -38,6 +38,13 @@
   letter-spacing: 0.01em;
 }
 
+.modal-header p {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
 .modal-close {
   background: none;
   border: none;

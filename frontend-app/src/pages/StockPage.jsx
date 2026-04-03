@@ -6,11 +6,11 @@ import { useAlerta } from '../hooks/useAlerta'
 import useListaFiltrada from '../hooks/useListaFiltrada'
 import useSelectOptions from '../hooks/useSelectOptions'
 import SearchableSelect from '../components/SearchableSelect/SearchableSelect'
-import { generarPdfIngreso, generarPdfTransferencia } from '../utils/pdfLote.js'
 import SelectorLocalObs from '../components/stock/SelectorLocalObs.jsx'
 import AgregarProducto from '../components/stock/AgregarProducto.jsx'
 import CarritoProductos from '../components/stock/CarritoProductos.jsx'
 import { useAuth } from '../hooks/useAuth.jsx'
+import { descargarIngresoPdf, descargarTransferenciaPdf } from '../helpers/pdf'
 // ─── MODO DE VISTA ────────────────────────────────────────────────────────────
 // 'lista'        → tabla de stock con acciones de ajuste/egreso
 // 'ingreso'      → carrito de ingreso por lote
@@ -180,16 +180,16 @@ export default function StockPage() {
       }
       const res = await api.ingresarLote(payload)
       mostrarAlerta('success', `Lote #${res.ingreso_lote_id} ingresado con éxito.`)
-      generarPdfIngreso(res)
       refetch()
       volverALista()
+      descargarIngresoPdf(res.ingreso_lote_id, (msg) => mostrarAlerta('error', msg))
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
     } finally {
       setLoadingConfirmar(false)
     }
   }
- 
+
   // ─── Confirmar transferencia de lote ─────────────────────────────────────
   const handleConfirmarTransferencia = async () => {
     if (carrito.length === 0)          { mostrarAlerta('error', 'Agregá al menos un producto.'); return }
@@ -210,9 +210,9 @@ export default function StockPage() {
       }
       const res = await api.transferirLote(payload)
       mostrarAlerta('success', `Transferencia #${res.transferencia_id} registrada con éxito.`)
-      generarPdfTransferencia(res)
       refetch()
       volverALista()
+      descargarTransferenciaPdf(res.transferencia_id, (msg) => mostrarAlerta('error', msg))
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
     } finally {
@@ -360,7 +360,7 @@ export default function StockPage() {
             onConfirmar={handleConfirmarIngreso}
             loading={loadingConfirmar}
             disabled={!localId}
-            textoBoton="✓ Confirmar ingreso y generar PDF"
+            textoBoton="✓ Confirmar ingreso"
             classBoton="btn btn-primary"
             handleCantidadCarrito={handleCantidadCarrito}
             handleEliminarDelCarrito={handleEliminarDelCarrito}
@@ -401,7 +401,7 @@ export default function StockPage() {
             onConfirmar={handleConfirmarTransferencia}
             loading={loadingConfirmar}
             disabled={!localOrigenId || !localDestinoId}
-            textoBoton="⇄ Confirmar transferencia y generar PDF"
+            textoBoton="⇄ Confirmar transferencia"
             classBoton="btn btn-transferir"
             handleCantidadCarrito={handleCantidadCarrito}
             handleEliminarDelCarrito={handleEliminarDelCarrito}
