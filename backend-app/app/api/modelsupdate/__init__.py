@@ -16,4 +16,6 @@ __all__ = [
     "MarcaUpdate",
     "ConfigComisionUpdate",
     "MarcaCelularUpdate",
+    "PedidoOnlineAdminNota",
+    "PedidoOnlineAprobarBody",
 ]

@@ -2,6 +2,12 @@ from .modelscreate import (
     # Locales
     LocalCreate,
 
+    # Pedidos online
+    PedidoOnlineCreate,
+    DetallePedidoAccesorioCreate,
+    DetallePedidoCelularCreate,
+    DetallePedidoChipCreate,
+
     # Usuarios
     UsuarioCreate,
 
@@ -65,4 +71,8 @@ __all__ = [
     "IngresoLoteCreate",
     "ItemIngreso",
     "MarcaCelularCreate",
+    "PedidoOnlineCreate",
+    "DetallePedidoAccesorioCreate",
+    "DetallePedidoCelularCreate",
+    "DetallePedidoChipCreate",
 ]

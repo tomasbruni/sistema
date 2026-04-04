@@ -4,6 +4,7 @@ from sqlmodel import Session, SQLModel, select, col, Field
 from sqlalchemy import exc
 from sqlalchemy.orm import aliased
 from datetime import datetime, date
+from pathlib import Path
 import io
 
 from app.db.session import get_session, SessionDep
@@ -21,7 +22,9 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+
+LOGO_PATH = str(Path(__file__).resolve().parent.parent.parent.parent / "static" / "images" / "logo-pdf.png")
 
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 

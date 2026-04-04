@@ -19,6 +19,8 @@ export default function Navbar() {
             <li><NavLink to="/chips">Chips</NavLink></li>
             <li><NavLink to="/celulares">Celulares</NavLink></li>
             <li><NavLink to="/reportes">Reportes</NavLink></li>
+            <li><NavLink to="/pedidos-online">Pedidos Online</NavLink></li>
+            <li><NavLink to="/finanzas">Finanzas</NavLink></li>
           </>
         )}
       </ul>

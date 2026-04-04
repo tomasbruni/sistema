@@ -504,4 +504,66 @@ export const api = {
     authFetch(`${BASE_URL}/comisiones/${id}`, {
       method: 'DELETE',
     }).then(handleResponse),
+
+  // PEDIDOS ONLINE
+  crearPedidoOnline: (body) =>
+    fetch(`${BASE_URL}/pedidos-online/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  listarPedidosOnline: ({ skip = 0, limit = LIMIT, estado = null, local_retiro_id = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/pedidos-online/?${buildParams({ skip, limit, estado, local_retiro_id, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  obtenerPedidoOnline: (id) =>
+    authFetch(`${BASE_URL}/pedidos-online/${id}`).then(handleResponse),
+
+  aprobarPedido: (id, body) =>
+    authFetch(`${BASE_URL}/pedidos-online/${id}/aprobar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  rechazarPedido: (id, body = {}) =>
+    authFetch(`${BASE_URL}/pedidos-online/${id}/rechazar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  entregarPedido: (id) =>
+    authFetch(`${BASE_URL}/pedidos-online/${id}/entregar`, {
+      method: 'POST',
+    }).then(handleResponse),
+
+  cancelarPedido: (id, body = {}) =>
+    authFetch(`${BASE_URL}/pedidos-online/${id}/cancelar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  // MOVIMIENTOS FINANCIEROS
+  listarMovimientosFinancieros: ({ offset = 0, limit = LIMIT, tipo = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/movimientos-financieros/?${buildParams({ offset, limit, tipo, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  crearMovimientoFinanciero: ({ tipo, monto, descripcion }) =>
+    authFetch(`${BASE_URL}/movimientos-financieros/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, monto, descripcion }),
+    }).then(handleResponse),
+
+  actualizarMovimientoFinanciero: (id, body) =>
+    authFetch(`${BASE_URL}/movimientos-financieros/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  eliminarMovimientoFinanciero: (id) =>
+    authFetch(`${BASE_URL}/movimientos-financieros/${id}`, { method: 'DELETE' })
+      .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
 }

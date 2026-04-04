@@ -6,8 +6,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 from app.api.routers import (
-    router_accesorios, 
-    router_tipoaccesorios, 
+    router_accesorios,
+    router_tipoaccesorios,
     router_subtipoaccesorios,
     router_celulares,
     router_chips,
@@ -26,7 +26,9 @@ from app.api.routers import (
     router_ingresos,
     router_egresos_caja,
     router_caja_diaria,
-    router_transferencias)
+    router_transferencias,
+    router_pedidos_online,
+    router_movimientos_financieros)
 
 from app.db.models import *
 from app.db.session import get_session, SessionDep
@@ -57,6 +59,8 @@ mainapp.include_router(router_ingresos.router)
 mainapp.include_router(router_egresos_caja.router)
 mainapp.include_router(router_caja_diaria.router)
 mainapp.include_router(router_transferencias.router)
+mainapp.include_router(router_pedidos_online.router)
+mainapp.include_router(router_movimientos_financieros.router)
 
 #esto de abajo es para permitir leer el json del doc
 origins = [

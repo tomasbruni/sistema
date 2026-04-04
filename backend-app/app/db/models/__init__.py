@@ -36,6 +36,16 @@ from .models import (
 
     # Reparaciones
     Reparacion,
+
+    # Pedidos online
+    PedidoOnline,
+    DetallePedidoAccesorio,
+    DetallePedidoCelular,
+    DetallePedidoChip,
+
+    # Movimientos financieros
+    MovimientoFinanciero,
+    TipoMovimientoFinanciero,
 )
 
 __all__ = [
@@ -62,4 +72,10 @@ __all__ = [
     "Transferencia",
     "MarcaCelular",
     "EgresoCaja",
+    "PedidoOnline",
+    "DetallePedidoAccesorio",
+    "DetallePedidoCelular",
+    "DetallePedidoChip",
+    "MovimientoFinanciero",
+    "TipoMovimientoFinanciero",
 ]

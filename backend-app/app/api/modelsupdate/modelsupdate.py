@@ -123,3 +123,15 @@ class MarcaUpdate(SQLModel):
     nombre: Optional[str] = None
     activo: Optional[bool] = None
 
+
+# =====================
+# PEDIDOS ONLINE
+# =====================
+class PedidoOnlineAdminNota(SQLModel):
+    notas_admin: Optional[str] = None
+
+
+class PedidoOnlineAprobarBody(SQLModel):
+    local_stock_id: int
+    notas_admin: Optional[str] = None
+

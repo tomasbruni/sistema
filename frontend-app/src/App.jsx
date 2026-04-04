@@ -12,6 +12,8 @@ import ChipsPage from './pages/ChipsPage'
 import ReportesPage from './pages/ReportesPage'
 import IngresosPage from './pages/IngresosPage'
 import TransferenciasPage from './pages/TransferenciasPage'
+import PedidosOnlinePage from './pages/PedidosOnlinePage'
+import MovimientosFinancierosPage from './pages/MovimientosFinancierosPage'
 
 function RutaPrivada({ children }) {
   const { token } = useAuth()
@@ -43,6 +45,8 @@ export default function App() {
           <Route path="chips"       element={<RutaAdmin><ChipsPage /></RutaAdmin>} />
           <Route path="celulares"   element={<RutaAdmin><CelularesPage /></RutaAdmin>} />
           <Route path="reportes"    element={<RutaAdmin><ReportesPage /></RutaAdmin>} />
+          <Route path="pedidos-online" element={<RutaAdmin><PedidosOnlinePage /></RutaAdmin>} />
+          <Route path="finanzas" element={<RutaAdmin><MovimientosFinancierosPage /></RutaAdmin>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -1,5 +1,6 @@
 import io
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -11,7 +12,9 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+
+LOGO_PATH = str(Path(__file__).resolve().parent.parent.parent.parent / "static" / "images" / "logo-pdf.png")
 
 from app.db.models import Accesorio, Local, MovimientoStock, Transferencia, TipoMovimiento, Usuario
 from app.db.session import get_session

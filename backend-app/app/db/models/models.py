@@ -131,10 +131,11 @@ class Chip(SQLModel, table=True):
 # STOCK (solo accesorios)
 # =====================
 class TipoMovimiento(str, Enum):
-    ENTRADA = "ENTRADA" 
+    ENTRADA = "ENTRADA"
     SALIDA = "SALIDA"
     AJUSTE = "AJUSTE"
     VENTA = "VENTA"
+    RESERVA = "RESERVA"
 
 
 class StockAccesorio(SQLModel, table=True):
@@ -167,6 +168,7 @@ class MovimientoStock(SQLModel, table=True):
     )
     motivo: Optional[str] = Field(default=None, max_length=255)
     usuario_id: Optional[int] = Field(default=None, foreign_key="usuarios.usuario_id")
+    pedido_online_id: Optional[int] = Field(default=None, foreign_key="pedidos_online.pedido_id")
 
 
 class IngresoLote(SQLModel, table=True):
@@ -328,5 +330,94 @@ class CompaniaChip(SQLModel, table=True):
     __tablename__ = "companias_chips" #type: ignore
 
     compania_chip_id: Optional[int] = Field(default=None, primary_key=True)
-    nombre: str 
+    nombre: str
     activo: bool = Field(default = True)
+
+
+# =====================
+# PEDIDOS ONLINE
+# =====================
+class PedidoOnline(SQLModel, table=True):
+    __tablename__ = "pedidos_online"  # type: ignore
+
+    pedido_id: Optional[int] = Field(default=None, primary_key=True)
+    estado: str = Field(default="PENDIENTE_APROBACION")  # PENDIENTE_APROBACION | APROBADO | RECHAZADO | ENTREGADO | CANCELADO
+
+    # Entrega
+    modo_entrega: str  # RETIRO_LOCAL | ENVIO
+    local_retiro_id: Optional[int] = Field(default=None, foreign_key="locales.local_id")
+    local_stock_id: Optional[int] = Field(default=None, foreign_key="locales.local_id")
+    direccion_envio: Optional[str] = Field(default=None, max_length=500)
+
+    # Cliente
+    nombre_cliente: str
+    telefono_cliente: str
+    mail_cliente: Optional[str] = Field(default=None, max_length=255)
+    notas_cliente: Optional[str] = Field(default=None, max_length=1000)
+
+    # Pago
+    medio_de_pago: str  # EFECTIVO | MERCADOPAGO
+    referencia_pago: Optional[str] = Field(default=None, max_length=255)
+    estado_pago: str = Field(default="PENDIENTE")  # PENDIENTE | PAGADO | REEMBOLSADO
+
+    # Montos y auditoría
+    total_productos: int  # suma de precio_lista * cantidad de cada ítem
+    costo_envio: int = Field(default=0)
+    monto_total: int  # total_productos + costo_envio
+    notas_admin: Optional[str] = Field(default=None, max_length=1000)
+    fecha_creacion: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+    fecha_actualizacion: Optional[datetime] = Field(default=None)
+    usuario_id_admin: Optional[int] = Field(default=None, foreign_key="usuarios.usuario_id")
+
+
+class DetallePedidoAccesorio(SQLModel, table=True):
+    __tablename__ = "detalles_pedidos_accesorios"  # type: ignore
+
+    detalle_id: Optional[int] = Field(default=None, primary_key=True)
+    pedido_id: int = Field(foreign_key="pedidos_online.pedido_id")
+    accesorio_id: int = Field(foreign_key="accesorios.accesorio_id")
+    precio_lista: int  # snapshot del precio al momento de crear el pedido
+    cantidad: int
+
+
+class DetallePedidoCelular(SQLModel, table=True):
+    __tablename__ = "detalles_pedidos_celulares"  # type: ignore
+
+    detalle_id: Optional[int] = Field(default=None, primary_key=True)
+    pedido_id: int = Field(foreign_key="pedidos_online.pedido_id")
+    celular_id: int = Field(foreign_key="celulares.celular_id")
+    imei: str  # snapshot
+
+
+class DetallePedidoChip(SQLModel, table=True):
+    __tablename__ = "detalles_pedidos_chips"  # type: ignore
+
+    detalle_id: Optional[int] = Field(default=None, primary_key=True)
+    pedido_id: int = Field(foreign_key="pedidos_online.pedido_id")
+    chip_id: int = Field(foreign_key="chips.chip_id")
+    numero_serie: str  # snapshot
+
+
+# =====================
+# MOVIMIENTOS FINANCIEROS
+# =====================
+class TipoMovimientoFinanciero(str, Enum):
+    INGRESO = "INGRESO"
+    EGRESO = "EGRESO"
+
+
+class MovimientoFinanciero(SQLModel, table=True):
+    __tablename__ = "movimientos_financieros"  # type: ignore
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tipo: TipoMovimientoFinanciero
+    monto: int
+    descripcion: str
+    fecha: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+    usuario_id: int = Field(foreign_key="usuarios.usuario_id")

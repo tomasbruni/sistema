@@ -154,33 +154,6 @@ def _build_pdf(
     story.append(_enc_table())
     story.append(Spacer(1, 6))
  
-    # Sobrante / Faltante / Firma
-    sf_data = [
-        [Paragraph("Sobrante:", small),
-         Paragraph("Faltante:", small),
-         Paragraph("Firma vendedora:", small)],
-        [Paragraph("", small), Paragraph("", small), Paragraph("", small)],
-    ]
-    sf_table = Table(
-        sf_data,
-        colWidths=[W*0.25, W*0.25, W*0.50],
-        rowHeights=[12, 16]
-    )
-    #("LINEBEFORE", (col, fila_inicio), (col, fila_fin), ...)
-    #("LINEBELOW", (col_inicio, fila), (col_fin, fila), grosor, color)
-    sf_table.setStyle(TableStyle([
-        ("VALIGN", (0,0),(-1,-1),"TOP"),
-        ("LEFTPADDING", (0,0),(-1,-1),2),
-        ("RIGHTPADDING", (0,0),(-1,-1),6),
-        ("TOPPADDING", (0,0), (-1,0), 1),
-        ("BOTTOMPADDING", (0,0), (-1,0), 1),
-        ("BOX", (0,0),(-1,-1),0.5, colors.black),
-        ("LINEBEFORE", (1,0),(1,1),0.5, colors.black),
-        ("LINEBEFORE", (2,0),(2,1),0.5, colors.black),
-        ("LINEBELOW", (0,0), (1,0), 0.5, colors.black),
-    ]))
-    story.append(sf_table)
-    story.append(Spacer(1, 8))
  
     # ── Tabla ventas ──
     story.append(Paragraph("VENTAS", seccion))
@@ -442,7 +415,37 @@ def _build_pdf(
         ("LINEBELOW",     (0,2),(-1,2),1,colors.black),
     ]))
     story.append(bal_tbl)
- 
+    story.append(Spacer(1, 10))
+        
+ # Sobrante / Faltante / Firma
+    sf_data = [
+        [Paragraph("Sobrante:", small),
+         Paragraph("Faltante:", small),
+         Paragraph("Firma vendedora:", small)],
+        [Paragraph("", small), Paragraph("", small), Paragraph("", small)],
+    ]
+    sf_table = Table(
+        sf_data,
+        colWidths=[W*0.25, W*0.25, W*0.50],
+        rowHeights=[12, 16]
+    )
+    #("LINEBEFORE", (col, fila_inicio), (col, fila_fin), ...)
+    #("LINEBELOW", (col_inicio, fila), (col_fin, fila), grosor, color)
+    sf_table.setStyle(TableStyle([
+        ("VALIGN", (0,0),(-1,-1),"TOP"),
+        ("LEFTPADDING", (0,0),(-1,-1),2),
+        ("RIGHTPADDING", (0,0),(-1,-1),6),
+        ("TOPPADDING", (0,0), (-1,0), 1),
+        ("BOTTOMPADDING", (0,0), (-1,0), 1),
+        ("BOX", (0,0),(-1,-1),0.5, colors.black),
+        ("LINEBEFORE", (1,0),(1,1),0.5, colors.black),
+        ("LINEBEFORE", (2,0),(2,1),0.5, colors.black),
+        ("LINEBELOW", (0,0), (1,0), 0.5, colors.black),
+    ]))
+    story.append(sf_table)
+    story.append(Spacer(1, 8))
+
+
     doc.build(story)
     return buffer.getvalue()
  

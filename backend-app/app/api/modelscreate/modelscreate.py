@@ -184,6 +184,40 @@ class PagoVentaCreate(SQLModel):
     cuotas: Optional[int] = 1
 
 
+# =====================
+# PEDIDOS ONLINE
+# =====================
+class DetallePedidoAccesorioCreate(SQLModel):
+    accesorio_id: int
+    cantidad: int = Field(..., gt=0)
+
+
+class DetallePedidoCelularCreate(SQLModel):
+    celular_id: int
+    imei: str  # snapshot
+
+
+class DetallePedidoChipCreate(SQLModel):
+    chip_id: int
+    numero_serie: str  # snapshot
+
+
+class PedidoOnlineCreate(SQLModel):
+    modo_entrega: str  # RETIRO_LOCAL | ENVIO
+    local_retiro_id: Optional[int] = None   # requerido si modo_entrega=RETIRO_LOCAL
+    direccion_envio: Optional[str] = None   # requerida si modo_entrega=ENVIO
+    medio_de_pago: str                      # EFECTIVO | MERCADOPAGO
+    referencia_pago: Optional[str] = None
+    costo_envio: int = Field(default=0, ge=0)
+    nombre_cliente: str
+    telefono_cliente: str
+    mail_cliente: Optional[str] = None
+    notas_cliente: Optional[str] = None
+    detalles_accesorios: Optional[List[DetallePedidoAccesorioCreate]] = []
+    detalles_celulares: Optional[List[DetallePedidoCelularCreate]] = []
+    detalles_chips: Optional[List[DetallePedidoChipCreate]] = []
+
+
 class VentaCreate(SQLModel):
     local_id: int = Field(..., gt=0)
     usuario_id: Optional[int] = None
