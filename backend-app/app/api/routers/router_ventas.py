@@ -20,8 +20,8 @@ router = APIRouter(
     tags=["VENTAS"],
 )
 
-MEDIOS_DE_PAGO_VALIDOS = {"EFECTIVO", "DEBITO", "CREDITO", "QR", "TRANSFERENCIA"}
-TIPOS_DE_VENTAS_VALIDOS = {"VENTA", "DEVOLUCION"}
+MEDIOS_DE_PAGO_VALIDOS = {"EFECTIVO", "DEBITO", "CREDITO", "QR", "TRANSFERENCIA", "MERCADOPAGO"}
+TIPOS_DE_VENTAS_VALIDOS = {"VENTA", "DEVOLUCION", "ONLINE"}
 
 def _calcular_comision(config: ConfigComision | None, precio_unitario: int, cantidad: int = 1) -> int:
     """Calcula el importe de comisión. Si no hay config retorna 0."""

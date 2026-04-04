@@ -9,6 +9,7 @@ from app.db.models import (
     PedidoOnline, DetallePedidoAccesorio, DetallePedidoCelular, DetallePedidoChip,
     Accesorio, Celular, Chip,
     StockAccesorio, MovimientoStock, TipoMovimiento,
+    Venta, PagoVenta, DetalleVentaAccesorio, DetalleVentaCelular, DetalleVentaChip,
     Local,
 )
 from app.api.modelscreate import PedidoOnlineCreate
@@ -125,9 +126,10 @@ def crear_pedido(
                 pedido_id=pedido.pedido_id,  # type: ignore
                 accesorio_id=item.accesorio_id,
                 precio_lista=accesorio.precio,
+                precio_unitario=item.precio_unitario,
                 cantidad=item.cantidad,
             ))
-            monto_total += accesorio.precio * item.cantidad
+            monto_total += item.precio_unitario * item.cantidad
 
         # Detalles celulares
         for item in (pedido_data.detalles_celulares or []):
@@ -142,6 +144,7 @@ def crear_pedido(
                 pedido_id=pedido.pedido_id,  # type: ignore
                 celular_id=item.celular_id,
                 imei=celular.imei,
+                precio_lista=celular.precio,
             ))
             monto_total += celular.precio
 
@@ -158,6 +161,7 @@ def crear_pedido(
                 pedido_id=pedido.pedido_id,  # type: ignore
                 chip_id=item.chip_id,
                 numero_serie=chip.numero_serie,
+                precio_lista=chip.precio,
             ))
             monto_total += chip.precio
 
@@ -388,6 +392,13 @@ def entregar_pedido(
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(require_admin),
 ):
+    """
+    Marca el pedido como ENTREGADO y genera una Venta de tipo ONLINE:
+    - Usa el local con tipo='ONLINE' como local_id de la venta (fallback: local_stock_id del pedido)
+    - Crea DetalleVenta* sin modificar stock (ya bajó en aprobación)
+    - Cambia celulares/chips de RESERVADO → VENDIDO
+    - Reclasifica los movimientos RESERVA del pedido a VENTA y les asigna venta_id
+    """
     pedido = session.get(PedidoOnline, pedido_id)
     if not pedido:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -396,12 +407,128 @@ def entregar_pedido(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
             detail=f"El pedido está en estado '{pedido.estado}', no se puede marcar como entregado.")
 
-    pedido.estado = "ENTREGADO"
-    pedido.estado_pago = "PAGADO"
-    pedido.usuario_id_admin = current_user.usuario_id
-    pedido.fecha_actualizacion = datetime.now(timezone.utc)
-    session.commit()
-    return {"mensaje": "Pedido marcado como entregado.", "pedido_id": pedido_id, "estado": "ENTREGADO"}
+    accesorios = session.exec(
+        select(DetallePedidoAccesorio).where(DetallePedidoAccesorio.pedido_id == pedido_id)
+    ).all()
+    celulares = session.exec(
+        select(DetallePedidoCelular).where(DetallePedidoCelular.pedido_id == pedido_id)
+    ).all()
+    chips = session.exec(
+        select(DetallePedidoChip).where(DetallePedidoChip.pedido_id == pedido_id)
+    ).all()
+
+    try:
+        # Buscar local ONLINE; si no existe, usar local_stock_id del pedido
+        local_online = session.exec(
+            select(Local).where(Local.tipo == "ONLINE", Local.activo == True)
+        ).first()
+        local_venta_id = local_online.local_id if local_online else pedido.local_stock_id
+
+        # ── 1. Crear la Venta ─────────────────────────────────────────────────
+        venta = Venta(
+            local_id=local_venta_id,
+            usuario_id=current_user.usuario_id,
+            monto_total=pedido.total_productos,
+            tipo="ONLINE",
+            pedido_online_id=pedido.pedido_id,
+        )
+        session.add(venta)
+        session.flush()  # obtener venta_id
+
+        # ── 2. Registrar pago ─────────────────────────────────────────────────
+        session.add(PagoVenta(
+            venta_id=venta.venta_id,  # type: ignore
+            medio_de_pago=pedido.medio_de_pago,
+            importe=pedido.total_productos,
+        ))
+
+        # ── 3. Detalles accesorios (sin tocar stock) ──────────────────────────
+        for detalle in accesorios:
+            session.add(DetalleVentaAccesorio(
+                venta_id=venta.venta_id,  # type: ignore
+                accesorio_id=detalle.accesorio_id,
+                precio_lista=detalle.precio_lista,
+                precio_unitario=detalle.precio_unitario,
+                cantidad=detalle.cantidad,
+                comision_importe=0,
+            ))
+
+        # ── 4. Detalles celulares + marcar VENDIDO ────────────────────────────
+        for detalle in celulares:
+            celular = session.exec(
+                select(Celular).where(Celular.celular_id == detalle.celular_id).with_for_update()
+            ).first()
+            if not celular:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Celular ID {detalle.celular_id} no encontrado.")
+            if celular.estado.upper() != "RESERVADO":
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El celular IMEI {celular.imei} no está en estado RESERVADO (estado: {celular.estado}).")
+            celular.estado = "VENDIDO"
+            session.add(DetalleVentaCelular(
+                venta_id=venta.venta_id,  # type: ignore
+                celular_id=detalle.celular_id,
+                imei=detalle.imei,
+                precio_lista=detalle.precio_lista,
+                precio_unitario=detalle.precio_lista,
+                comision_importe=0,
+            ))
+
+        # ── 5. Detalles chips + marcar VENDIDO ────────────────────────────────
+        for detalle in chips:
+            chip = session.exec(
+                select(Chip).where(Chip.chip_id == detalle.chip_id).with_for_update()
+            ).first()
+            if not chip:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Chip ID {detalle.chip_id} no encontrado.")
+            if chip.estado.upper() != "RESERVADO":
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El chip {chip.numero_serie} no está en estado RESERVADO (estado: {chip.estado}).")
+            chip.estado = "VENDIDO"
+            session.add(DetalleVentaChip(
+                venta_id=venta.venta_id,  # type: ignore
+                chip_id=detalle.chip_id,
+                numero_serie=detalle.numero_serie,
+                precio_lista=detalle.precio_lista,
+                precio_unitario=detalle.precio_lista,
+                comision_importe=0,
+            ))
+
+        # ── 6. Reclasificar movimientos RESERVA → VENTA ───────────────────────
+        movimientos = session.exec(
+            select(MovimientoStock).where(MovimientoStock.pedido_online_id == pedido_id)
+        ).all()
+        for mov in movimientos:
+            mov.tipo_movimiento = TipoMovimiento.VENTA
+            mov.venta_id = venta.venta_id  # type: ignore
+            mov.motivo = f"Venta online #{venta.venta_id} (pedido #{pedido_id})"
+
+        # ── 7. Actualizar pedido ──────────────────────────────────────────────
+        pedido.estado = "ENTREGADO"
+        pedido.estado_pago = "PAGADO"
+        pedido.usuario_id_admin = current_user.usuario_id
+        pedido.fecha_actualizacion = datetime.now(timezone.utc)
+
+        session.commit()
+        return {
+            "mensaje": "Pedido marcado como entregado.",
+            "pedido_id": pedido_id,
+            "estado": "ENTREGADO",
+            "venta_id": venta.venta_id,
+        }
+
+    except HTTPException:
+        session.rollback()
+        raise
+    except exc.IntegrityError as e:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error de integridad: {str(e)}")
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error inesperado: {str(e)}")
 
 
 @router.post("/{pedido_id}/cancelar", status_code=status.HTTP_200_OK)

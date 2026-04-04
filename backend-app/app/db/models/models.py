@@ -211,7 +211,8 @@ class Venta(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
     )
     monto_total: int  # validado por el backend: sum(precio_unitario * cantidad) de todos los detalles
-    tipo: str         # VENTA | DEVOLUCION
+    tipo: str         # VENTA | DEVOLUCION | ONLINE
+    pedido_online_id: Optional[int] = Field(default=None, foreign_key="pedidos_online.pedido_id")
  
  
 class PagoVenta(SQLModel, table=True):
@@ -380,6 +381,7 @@ class DetallePedidoAccesorio(SQLModel, table=True):
     pedido_id: int = Field(foreign_key="pedidos_online.pedido_id")
     accesorio_id: int = Field(foreign_key="accesorios.accesorio_id")
     precio_lista: int  # snapshot del precio al momento de crear el pedido
+    precio_unitario: int  # precio de venta (puede diferir de precio_lista por descuentos)
     cantidad: int
 
 
@@ -390,6 +392,7 @@ class DetallePedidoCelular(SQLModel, table=True):
     pedido_id: int = Field(foreign_key="pedidos_online.pedido_id")
     celular_id: int = Field(foreign_key="celulares.celular_id")
     imei: str  # snapshot
+    precio_lista: int  # snapshot del precio al momento de crear el pedido
 
 
 class DetallePedidoChip(SQLModel, table=True):
@@ -399,6 +402,7 @@ class DetallePedidoChip(SQLModel, table=True):
     pedido_id: int = Field(foreign_key="pedidos_online.pedido_id")
     chip_id: int = Field(foreign_key="chips.chip_id")
     numero_serie: str  # snapshot
+    precio_lista: int  # snapshot del precio al momento de crear el pedido
 
 
 # =====================

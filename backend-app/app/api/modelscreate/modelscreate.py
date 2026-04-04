@@ -189,6 +189,7 @@ class PagoVentaCreate(SQLModel):
 # =====================
 class DetallePedidoAccesorioCreate(SQLModel):
     accesorio_id: int
+    precio_unitario: int = Field(..., gt=0)
     cantidad: int = Field(..., gt=0)
 
 
