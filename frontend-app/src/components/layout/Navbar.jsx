@@ -1,26 +1,33 @@
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
+import NavDropdown from "./NavDropdown";
 
 export default function Navbar() {
-  const { nombre, rol, logout } = useAuth()
+  const { nombre, rol, logout } = useAuth();
 
   return (
     <nav className="navbar">
       <ul className="navbar-links">
         <li><NavLink to="/ventas">Ventas</NavLink></li>
         <li><NavLink to="/stock">Stock</NavLink></li>
-        <li><NavLink to="/transferencias">Transferencias</NavLink></li>
         {rol === 'admin' && (
           <>
-            <li><NavLink to="/ingresos">Ingresos</NavLink></li>
-            <li><NavLink to="/movimientos">Movimientos</NavLink></li>
-            <li><NavLink to="/accesorios">Accesorios</NavLink></li>
-            <li><NavLink to="/chips">Chips</NavLink></li>
-            <li><NavLink to="/celulares">Celulares</NavLink></li>
-            <li><NavLink to="/reportes">Reportes</NavLink></li>
-            <li><NavLink to="/finanzas">Finanzas</NavLink></li>
+            <NavDropdown label="Mov. de stock" items={[
+              { to: "/ingresos", label: "Ingresos" },
+              { to: "/transferencias", label: "Transferencias" },
+              { to: "/movimientos", label: "Movimientos" },
+            ]} />
+            <NavDropdown label="Productos" items={[
+              { to: "/accesorios", label: "Accesorios" },
+              { to: "/chips", label: "Chips" },
+              { to: "/celulares", label: "Celulares" },
+            ]} />
+            <NavDropdown label="Finanzas" items={[
+              { to: "/reportes", label: "Reportes" },
+              { to: "/finanzas", label: "Finanzas" },
+            ]} />
             <li><NavLink to="/adicionales">Archivos maestros</NavLink></li>
-            <li><NavLink to="/pedidos-online">Pedidos Online (no implementado)</NavLink></li>
+            <li><NavLink to="/pedidos-online">Pedidos Online</NavLink></li>
           </>
         )}
       </ul>
