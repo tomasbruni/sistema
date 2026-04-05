@@ -18,6 +18,7 @@ class LocalUpdate(SQLModel):
 # =====================
 class UsuarioUpdate(SQLModel):
     nombre: Optional[str] = None
+    activo: Optional[bool] = None
 
 
 # =====================

@@ -52,6 +52,12 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if not usuario.activo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuario desactivado",
+        )
+
     token = crear_token(
         {"sub": str(usuario.usuario_id), "rol": usuario.rol},
         timedelta(minutes=TOKEN_EXPIRE_MINUTES),

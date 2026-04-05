@@ -204,8 +204,27 @@ export const api = {
       `${BASE_URL}/ventas/?${buildParams({ skip, limit, local_id })}`
     ).then(handleResponse),
 
-  listarUsuarios: () =>
-    authFetch(`${BASE_URL}/usuarios/`).then(handleResponse),
+  listarUsuarios: ({ activo } = {}) => {
+    const query = buildParams({ activo });
+    return authFetch(`${BASE_URL}/usuarios/${query ? `?${query}` : ""}`).then(handleResponse);
+  },
+
+  crearUsuario: (body) =>
+    authFetch(`${BASE_URL}/usuarios/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  actualizarUsuario: (id, body) =>
+    authFetch(`${BASE_URL}/usuarios/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  desactivarUsuario: (id) =>
+    authFetch(`${BASE_URL}/usuarios/${id}`, { method: 'DELETE' }).then(handleResponse),
 
   // MODULO ACCESORIOS
   verificarDuplicado: (body) =>

@@ -8,6 +8,7 @@ import SeccionModelos from '../components/secciones/SeccionModelos'
 import SeccionMarcasCelulares from '../components/secciones/SeccionMarcasCelulares'
 import SeccionLocales from '../components/secciones/SeccionLocales'
 import SeccionComisiones from '../components/secciones/SeccionComisiones'
+import SeccionUsuarios from '../components/secciones/SeccionUsuarios'
 
 const SECCIONES = [
   { key: 'tipos',           label: 'Tipos de accesorio' },
@@ -17,6 +18,7 @@ const SECCIONES = [
   { key: 'modelos',         label: 'Modelos de celular' },
   { key: 'locales',         label: 'Locales' },
   { key: 'comisiones',      label: 'Comisiones' },
+  { key: 'usuarios',        label: 'Usuarios' },
 ]
 
 export default function AdicionalesPage() {
@@ -55,6 +57,7 @@ export default function AdicionalesPage() {
       {seccion === 'modelos'         && <SeccionModelos        mostrarAlerta={mostrarAlerta} />}
       {seccion === 'locales'         && <SeccionLocales        mostrarAlerta={mostrarAlerta} />}
       {seccion === 'comisiones'      && <SeccionComisiones     mostrarAlerta={mostrarAlerta} />}
+      {seccion === 'usuarios'        && <SeccionUsuarios      mostrarAlerta={mostrarAlerta} />}
     </div>
   )
 }

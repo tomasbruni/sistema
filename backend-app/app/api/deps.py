@@ -17,6 +17,7 @@ class UsuarioActual(SQLModel):
 def get_current_user(
     # lee el token desde el header y lo pasa como string
     token: Annotated[str, Depends(oauth2_scheme)],
+    session: Session = Depends(get_session),
 ) -> UsuarioActual:
     credenciales_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -34,10 +35,15 @@ def get_current_user(
     except InvalidTokenError:
         raise credenciales_exc
 
-    # usuario = session.get(Usuario, int(usuario_id))
-    # if not usuario:
-    #     raise credenciales_exc
-    
+    usuario = session.get(Usuario, int(usuario_id))
+    if not usuario:
+        raise credenciales_exc
+    if not usuario.activo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuario desactivado",
+        )
+
     return UsuarioActual(
         usuario_id=int(usuario_id),
         rol=rol, #type: ignore

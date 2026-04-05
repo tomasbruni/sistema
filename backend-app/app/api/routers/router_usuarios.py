@@ -4,24 +4,25 @@ from typing import List, Optional
 from app.db.session import get_session
 from app.db.models import Usuario, MovimientoStock, IngresoLote, Transferencia, Venta, Reparacion
 from app.api.modelscreate import UsuarioCreate
+from app.api.modelsupdate import UsuarioUpdate
 from app.api.deps import require_admin, get_current_user, UsuarioActual
 from app.api.routers.router_auth import hashear_password
 
 router = APIRouter(
     prefix="/usuarios",
     tags=["Usuarios"],
-    dependencies=[Depends(require_admin)]
 )
 
 class UsuarioResponse(SQLModel):
     usuario_id: int
     nombre: str
     rol: str
+    activo: bool
 
-@router.get("/", response_model=list[UsuarioResponse])
+@router.get("/", response_model=list[UsuarioResponse], dependencies=[Depends(get_current_user)])
 def listar_usuarios(
     activo: Optional[bool] = True,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
 ):
     query = select(Usuario)
     if activo is not None:
@@ -29,8 +30,7 @@ def listar_usuarios(
     return session.exec(query).all()
 
 
-
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 def crear_usuario(
     usuario: UsuarioCreate,
     session: Session = Depends(get_session)
@@ -45,7 +45,27 @@ def crear_usuario(
     return {"mensaje": "Usuario creado exitosamente"}
 
 
-@router.delete("/{usuario_id}", status_code=status.HTTP_200_OK)
+@router.put("/{usuario_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_admin)])
+def actualizar_usuario(
+    usuario_id: int,
+    datos: UsuarioUpdate,
+    session: Session = Depends(get_session)
+):
+    usuario = session.get(Usuario, usuario_id)
+    if not usuario:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+
+    update_data = datos.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(usuario, key, value)
+
+    session.add(usuario)
+    session.commit()
+    session.refresh(usuario)
+    return {"mensaje": f"Usuario '{usuario.nombre}' actualizado exitosamente"}
+
+
+@router.delete("/{usuario_id}", status_code=status.HTTP_200_OK, dependencies=[Depends(require_admin)])
 def desactivar_usuario(
     usuario_id: int,
     session: Session = Depends(get_session)
