@@ -3,3 +3,4 @@ set -o errexit
 
 pip install -r requirements.txt
 alembic upgrade head
+python seed.py

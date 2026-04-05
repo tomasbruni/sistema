@@ -10,7 +10,7 @@ from app.api.routers.router_auth import hashear_password
 router = APIRouter(
     prefix="/usuarios",
     tags=["Usuarios"],
-    #dependencies=[Depends(require_admin)]  
+    dependencies=[Depends(require_admin)]
 )
 
 class UsuarioResponse(SQLModel):
