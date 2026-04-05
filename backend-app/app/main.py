@@ -1,5 +1,6 @@
+import os
 from fastapi import FastAPI, Depends, HTTPException, status
-# from api.routers.accesorios import 
+# from api.routers.accesorios import
 from typing import Annotated
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
@@ -59,19 +60,14 @@ mainapp.include_router(router_ingresos.router)
 mainapp.include_router(router_egresos_caja.router)
 mainapp.include_router(router_caja_diaria.router)
 mainapp.include_router(router_transferencias.router)
-mainapp.include_router(router_pedidos_online.router)
+#mainapp.include_router(router_pedidos_online.router) por ahora no
 mainapp.include_router(router_movimientos_financieros.router)
 
-#esto de abajo es para permitir leer el json del doc
-origins = [
-    "http://127.0.0.1:5500",
-    "http://localhost:5500",
-    "http://localhost:5173"    
-]
+origins = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5500,http://localhost:5500,http://localhost:5173")
 
 mainapp.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,   # o ["*"] para permitir todo (solo desarrollo)
+    allow_origins=[o.strip() for o in origins.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

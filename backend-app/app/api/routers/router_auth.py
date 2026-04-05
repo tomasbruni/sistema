@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Annotated
 
@@ -13,9 +14,7 @@ from app.db.models import Usuario
 router = APIRouter(prefix="/auth", tags=["AUTH"])
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
-# ESTO HAY Q GUARDARLO EN UNA VARIABLE DE ENTORNO
-# EN PRODUCCION
-SECRET_KEY = "7be29e1278d3a81d1b3803e26fdc397ff47d141db9314fe364ba7d1d76187ad0"
+SECRET_KEY = os.environ.get("SECRET_KEY", "7be29e1278d3a81d1b3803e26fdc397ff47d141db9314fe364ba7d1d76187ad0")
 ALGORITHM  = "HS256"
 TOKEN_EXPIRE_MINUTES = 60 * 8
 

@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -11,10 +12,14 @@ from alembic import context
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-#ver despues como usar una variable de entorno
-database_url = "postgresql+psycopg2://fastapi_user:fastapi_pass@localhost:5432/fastapi_db"
 
-
+database_url = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+psycopg2://fastapi_user:fastapi_pass@localhost:5432/fastapi_db",
+)
+# Render usa "postgres://" pero SQLAlchemy necesita "postgresql://"
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
 
 config.set_main_option("sqlalchemy.url", database_url)
 

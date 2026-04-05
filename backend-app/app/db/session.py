@@ -1,3 +1,4 @@
+import os
 from typing import Annotated
 
 from fastapi import Depends
@@ -7,18 +8,16 @@ from sqlmodel import Session, SQLModel, create_engine
 # DATABASE CONFIG
 # =====================
 
-POSTGRES_USER = "fastapi_user"
-POSTGRES_PASSWORD = "fastapi_pass"
-POSTGRES_HOST = "localhost"
-POSTGRES_PORT = "5432"
-POSTGRES_DB = "fastapi_db"
-
-DATABASE_URL = (
-    f"postgresql+psycopg://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
-    f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+psycopg://fastapi_user:fastapi_pass@localhost:5432/fastapi_db",
 )
 
-engine = create_engine(DATABASE_URL, echo=True)
+# Render usa "postgres://" pero SQLAlchemy necesita "postgresql://"
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+
+engine = create_engine(DATABASE_URL, echo=False)
 
 # =====================
 # SESSION

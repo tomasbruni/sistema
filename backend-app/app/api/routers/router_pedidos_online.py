@@ -20,7 +20,7 @@ router = APIRouter(
     prefix="/pedidos-online",
     tags=["PEDIDOS ONLINE"],
 )
-
+# ARREGLAR LOGICA DE PRECIO UNITARIO, VIENE DESDE EL FRONT Y NO DEBERIA
 MODOS_ENTREGA_VALIDOS = {"RETIRO_LOCAL", "ENVIO"}
 MEDIOS_DE_PAGO_VALIDOS = {"EFECTIVO", "MERCADOPAGO"}
 
@@ -126,7 +126,7 @@ def crear_pedido(
                 pedido_id=pedido.pedido_id,  # type: ignore
                 accesorio_id=item.accesorio_id,
                 precio_lista=accesorio.precio,
-                precio_unitario=item.precio_unitario,
+                precio_unitario=item.precio_unitario, #problema de seguridad, precio_unitario viene del front
                 cantidad=item.cantidad,
             ))
             monto_total += item.precio_unitario * item.cantidad
@@ -426,7 +426,7 @@ def entregar_pedido(
 
         # ── 1. Crear la Venta ─────────────────────────────────────────────────
         venta = Venta(
-            local_id=local_venta_id,
+            local_id=local_venta_id, #type: ignore
             usuario_id=current_user.usuario_id,
             monto_total=pedido.total_productos,
             tipo="ONLINE",
