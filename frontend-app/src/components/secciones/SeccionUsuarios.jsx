@@ -10,7 +10,7 @@ export default function SeccionUsuarios({ mostrarAlerta }) {
     () => api.listarUsuarios({ activo: filtroActivo }),
     [filtroActivo]
   )
-  const crud = useCrudSeccion(fetchFn, { nombre: '', password: '', rol: 'user' })
+  const crud = useCrudSeccion(fetchFn, { nombre: '', password: '', rol: 'usuario' })
 
   useEffect(() => { crud.fetchItems('') }, [filtroActivo])
 
@@ -98,7 +98,7 @@ export default function SeccionUsuarios({ mostrarAlerta }) {
                 value={crud.form.rol}
                 onChange={e => crud.setForm({ ...crud.form, rol: e.target.value })}
               >
-                <option value="user">Usuario</option>
+                <option value="usuario">Usuario</option>
                 <option value="admin">Administrador</option>
               </select>
             </div>

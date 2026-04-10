@@ -349,6 +349,17 @@ export const api = {
       return res.blob()
     }),
 
+  // SOBRANTES / FALTANTES
+  upsertSobranteFaltante: (body) =>
+    authFetch(`${BASE_URL}/sobrantes-faltantes/`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  getSobranteFaltante: ({ local_id, fecha }) =>
+    authFetch(`${BASE_URL}/sobrantes-faltantes/?${buildParams({ local_id, fecha })}`).then(handleResponse),
+
   // VENTAS
   crearVenta: (body) =>
     authFetch(`${BASE_URL}/ventas/crear-venta`, {
@@ -585,4 +596,48 @@ export const api = {
   eliminarMovimientoFinanciero: (id) =>
     authFetch(`${BASE_URL}/movimientos-financieros/${id}`, { method: 'DELETE' })
       .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
+
+  // REPARACIONES
+  listarReparaciones: ({ estado = null, local_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/reparaciones/?${buildParams({ estado, local_id, dni_cliente, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  crearReparacion: (body) =>
+    authFetch(`${BASE_URL}/reparaciones/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  actualizarReparacion: (id, body) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  obtenerHistorialReparacion: (id) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/historial`).then(handleResponse),
+
+  cambiarPrecioReparacion: (id, body) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/cambio-de-precio`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  entregarReparacion: (id, body) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/entregar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  garantiaReparacion: (id, body) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/garantia`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  entregarGarantiaReparacion: (id, body) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/entregar-garantia`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  descargarReporteComisiones: ({ local_id, usuario_id, desde, hasta }) =>
+    authFetch(`${BASE_URL}/reportes/comisiones/excel?${buildParams({ local_id, usuario_id, desde, hasta })}`),
 }

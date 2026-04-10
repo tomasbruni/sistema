@@ -10,6 +10,7 @@ from .models import (
     PagoVenta,
     ConfigComision,
     EgresoCaja,
+    SobranteFaltante,
 
     # Productos
     Accesorio,
@@ -36,6 +37,7 @@ from .models import (
 
     # Reparaciones
     Reparacion,
+    MovimientoReparacion,
 
     # Pedidos online
     PedidoOnline,
@@ -66,12 +68,14 @@ __all__ = [
     "DetalleVentaCelular",
     "DetalleVentaChip",
     "Reparacion",
+    "MovimientoReparacion",
     "PagoVenta",
     "ConfigComision",
     "IngresoLote",
     "Transferencia",
     "MarcaCelular",
     "EgresoCaja",
+    "SobranteFaltante",
     "PedidoOnline",
     "DetallePedidoAccesorio",
     "DetallePedidoCelular",

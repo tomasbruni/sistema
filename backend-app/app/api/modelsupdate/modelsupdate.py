@@ -109,11 +109,11 @@ class ConfigComisionUpdate(SQLModel):
 # REPARACIONES
 # =====================
 class ReparacionUpdate(SQLModel):
-    estado: Optional[str] = None
-    descripcion_falla: Optional[str] = None
-    costo_reparador: Optional[int] = None
-    costo_final: Optional[int] = None
+    descripcion: Optional[str] = None
+    adelanto: Optional[int] = None
+    pago_reparador: Optional[int] = None
     telefono_cliente: Optional[str] = None
+    dni_cliente: Optional[str] = None
     mail_cliente: Optional[str] = None
 
 

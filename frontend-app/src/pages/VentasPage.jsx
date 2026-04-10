@@ -73,13 +73,23 @@ export default function VentasPage() {
 
   const [cuotas, setCuotas] = useState(1);
   const [medioPagoElectronico, setMedioPagoElectronico] = useState("QR");
+
+  // ── Fecha de venta (solo admin puede modificar) ───────────────────────────
+  const hoyArgentina = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+  const [fechaVenta, setFechaVenta] = useState(hoyArgentina)
   
   // ─── Caja diaria ──────────────────────────────────────────────────────────────
-  const [fechaCaja, setFechaCaja] = useState(() => new Date().toISOString().slice(0, 10))
+  const [fechaCaja, setFechaCaja] = useState('')
   const [loadingCaja, setLoadingCaja] = useState(false)
+
+  // ─── Sobrante / Faltante ──────────────────────────────────────────────────────
+  const [sobrante, setSobrante] = useState('')
+  const [faltante, setFaltante] = useState('')
+  const [loadingSF, setLoadingSF] = useState(false)
 
   const handleGenerarCajaDiaria = async () => {
     if (!localId) { mostrarAlerta('error', 'Seleccioná un local.'); return }
+    if (!fechaCaja) { mostrarAlerta('error', 'Seleccioná una fecha.'); return }
     setLoadingCaja(true)
     try {
       const blob = await api.generarCajaDiaria({
@@ -97,6 +107,27 @@ export default function VentasPage() {
       mostrarAlerta('error', `Error al generar caja: ${err.message}`)
     } finally {
       setLoadingCaja(false)
+    }
+  }
+
+  const handleGuardarSF = async () => {
+    if (!localId) { mostrarAlerta('error', 'Seleccioná un local.'); return }
+    if (rol === 'admin' && !fechaCaja) { mostrarAlerta('error', 'Seleccioná una fecha.'); return }
+    setLoadingSF(true)
+    try {
+      const body = {
+        local_id: localId,
+        sobrante: parseInt(sobrante) || 0,
+        faltante: parseInt(faltante) || 0,
+        ...(rol === 'admin' && { usuario_id: usuarioId }),
+        ...(rol === 'admin' && { fecha: fechaCaja }),
+      }
+      await api.upsertSobranteFaltante(body)
+      mostrarAlerta('success', 'Sobrante/faltante guardado.')
+    } catch (err) {
+      mostrarAlerta('error', `Error: ${err.message}`)
+    } finally {
+      setLoadingSF(false)
     }
   }
 
@@ -182,6 +213,7 @@ export default function VentasPage() {
     setMontoElectronico('')
     setMedioPagoElectronico('QR')
     setCuotas(1)
+    setFechaVenta(hoyArgentina())
     cerrarFormEgresos()
     setModo('creacion')
   }
@@ -208,6 +240,9 @@ export default function VentasPage() {
   }
   const cerrarFormAcc = () => {
     setFormAccAbierto(false)
+    setFormAccId(null); setFormAccData(null); setFormAccPrecio(''); setFormAccCantidad(1)
+  }
+  const limpiarFormAcc = () => {
     setFormAccId(null); setFormAccData(null); setFormAccPrecio(''); setFormAccCantidad(1)
   }
 
@@ -279,7 +314,7 @@ export default function VentasPage() {
         cantidad,
       }])
     }
-    cerrarFormAcc()
+    limpiarFormAcc()
   }
 
   const handleAgregarCel = () => {
@@ -409,7 +444,8 @@ export default function VentasPage() {
       detalles_chips: productos
         .filter(p => p.tipo === 'chip')
         .map(p => ({ chip_id: p.id, numero_serie: p.numero_serie, precio_unitario: p.precio_unitario })),
-       ...(rol === 'admin' && { usuario_id: usuarioId }) // si es admin el usuario es seleccionado
+      ...(rol === 'admin' && { usuario_id: usuarioId }), // si es admin el usuario es seleccionado
+      ...(rol === 'admin' && { fecha_ingreso: `${fechaVenta}T00:00:00-03:00` }),
     }
 
     setLoadingConfirmar(true)
@@ -563,7 +599,7 @@ export default function VentasPage() {
 
               {/* {Cuando el value del <select> no coincide con ninguna opción, el navegador:
                    selecciona automáticamente la primera opción disponible } */}
-              {rol === 'admin' && 
+              {rol === 'admin' &&
               <div className='form-group'>
                 <label>Vendedor</label>
                 <select value={usuarioId ?? ''} onChange={e => setUsuarioId(parseInt(e.target.value))}>
@@ -571,6 +607,17 @@ export default function VentasPage() {
                     <option key={l.usuario_id} value={l.usuario_id}>{l.nombre}</option>
                   ))}
                 </select>
+              </div>}
+
+              {rol === 'admin' &&
+              <div className='form-group' style={{ maxWidth: 180 }}>
+                <label>Fecha de venta</label>
+                <input
+                  type="date"
+                  value={fechaVenta}
+                  max={hoyArgentina()}
+                  onChange={e => setFechaVenta(e.target.value)}
+                />
               </div>}
             </div>
           </div>
@@ -595,11 +642,12 @@ export default function VentasPage() {
               <h3>Agregar accesorio</h3>
               <div className="form-row">
                 <div className="form-group" style={{ flex: 2 }}>
+                  {/* cambiar buscador select para que en una query se traiga el stock disponible tambien */}
                   <label>Accesorio *</label>
                   <SearchableSelect
                     options={options.accesorios}
                     value={formAccId}
-                    onChange={handleSeleccionAcc}
+                    onChange={handleSeleccionAcc} 
                     onSearch={(t) => buscadorSelect('accesorios', t)}
                     placeholder="Buscar por nombre..."
                   />
@@ -973,6 +1021,31 @@ export default function VentasPage() {
               <label>Fecha</label>
               <input type="date" value={fechaCaja} onChange={e => setFechaCaja(e.target.value)} />
             </div>
+            <div className="form-group" style={{ maxWidth: 130 }}>
+              <label>Sobrante</label>
+              <input
+                type="number" min={0}
+                value={sobrante}
+                onChange={e => setSobrante(e.target.value)}
+                placeholder="$"
+              />
+            </div>
+            <div className="form-group" style={{ maxWidth: 130 }}>
+              <label>Faltante</label>
+              <input
+                type="number" min={0}
+                value={faltante}
+                onChange={e => setFaltante(e.target.value)}
+                placeholder="$"
+              />
+            </div>
+            <button
+              className="btn btn-secondary"
+              onClick={handleGuardarSF}
+              disabled={loadingSF}
+            >
+              {loadingSF ? 'Guardando...' : 'Guardar sobrante/faltante'}
+            </button>
             <button
               className="btn btn-secondary"
               onClick={handleGenerarCajaDiaria}
@@ -980,6 +1053,7 @@ export default function VentasPage() {
             >
               {loadingCaja ? 'Generando...' : 'Generar caja diaria'}
             </button>
+
           </div>
         </>
       )}

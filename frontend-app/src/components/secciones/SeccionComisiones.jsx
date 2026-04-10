@@ -3,7 +3,7 @@ import { api } from '../../api/api'
 import useCrudSeccion from '../../hooks/useCrudSeccion'
 import SeccionBase from './SeccionBase'
 
-const TIPOS_PRODUCTO = ['ACCESORIO', 'CELULAR', 'CHIP']
+const TIPOS_PRODUCTO = ['ACCESORIO', 'CELULAR', 'CHIP','REPARACION']
 const TIPOS_CALCULO  = ['PORCENTAJE', 'FIJO']
 
 const EMPTY_FORM = { tipo_producto: '', tipo_calculo: '', valor: '' }

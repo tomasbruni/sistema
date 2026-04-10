@@ -1,76 +1,62 @@
-import { useState } from 'react'
-import './AccesoriosPage.css' // reutiliza los estilos base del sistema
+import { useEffect, useState } from 'react'
+import './AccesoriosPage.css'
+import { api } from '../api/api'
+import { useAlerta } from '../hooks/useAlerta'
 
-// ─── TIPOS DE REPORTE ────────────────────────────────────────────────────────
-// Cada reporte define: label, endpoint de export, y un componente de filtros extra.
-// Para agregar un reporte nuevo: agregar una entrada acá y su FiltrosExtra si corresponde.
-
-const REPORTES = [
-  {
-    key:      'iva',
-    label:    'IVA sobre pagos electrónicos',
-    endpoint: '/reportes/iva/export',
-    // Sin filtros adicionales por ahora
-    FiltrosExtra: null,
-  },
-]
-
-const BASE_URL = 'http://localhost:8000'
-
-// ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
 export default function ReportesPage() {
+  const { alerta, mostrarAlerta, cerrarAlerta } = useAlerta()
+
   const hoy       = new Date().toISOString().slice(0, 10)
   const primerDia = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
     .toISOString().slice(0, 10)
 
-  const [tipoReporte,  setTipoReporte]  = useState(REPORTES[0].key)
-  const [fechaDesde,   setFechaDesde]   = useState(primerDia)
-  const [fechaHasta,   setFechaHasta]   = useState(hoy)
-  const [filtrosExtra, setFiltrosExtra] = useState({})
-  const [loading,      setLoading]      = useState(false)
-  const [alerta,       setAlerta]       = useState(null)
+  const [locales,   setLocales]   = useState([])
+  const [usuarios,  setUsuarios]  = useState([])
+  const [localId,   setLocalId]   = useState('')
+  const [usuarioId, setUsuarioId] = useState('')
+  const [desde,     setDesde]     = useState(primerDia)
+  const [hasta,     setHasta]     = useState(hoy)
+  const [loading,   setLoading]   = useState(false)
 
-  const reporte = REPORTES.find(r => r.key === tipoReporte)
-
-  const mostrarAlerta = (tipo, msg) => {
-    setAlerta({ tipo, msg })
-    setTimeout(() => setAlerta(null), 5000)
-  }
+  useEffect(() => {
+    api.listarLocales({ tipo: 'LOCAL' }).then(setLocales).catch(() => {})
+    api.listarUsuarios().then(data => setUsuarios(data.filter(u => u.rol === 'usuario'))).catch(() => {})
+  }, [])
 
   const handleGenerar = async () => {
-    if (!fechaDesde || !fechaHasta) {
+    if (!localId || !usuarioId) {
+      mostrarAlerta('warning', 'Seleccioná un local y una vendedora.')
+      return
+    }
+    if (!desde || !hasta) {
       mostrarAlerta('warning', 'Seleccioná un rango de fechas.')
       return
     }
-    if (fechaDesde > fechaHasta) {
+    if (desde > hasta) {
       mostrarAlerta('warning', 'La fecha de inicio no puede ser posterior a la fecha de fin.')
       return
     }
 
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        fecha_desde: fechaDesde,
-        fecha_hasta: fechaHasta,
-        ...filtrosExtra,
+      const res = await api.descargarReporteComisiones({
+        local_id:   localId,
+        usuario_id: usuarioId,
+        desde,
+        hasta,
       })
-
-      const res = await fetch(`${BASE_URL}${reporte.endpoint}?${params}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `Error ${res.status}`)
       }
-
-      const blob = await res.blob()
-      const url  = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href  = url
-
-      // Nombre del archivo: tipo_reporte_desde_hasta.xlsx
-      link.download = `${tipoReporte}_${fechaDesde}_${fechaHasta}.xlsx`
+      const blob    = await res.blob()
+      const url     = URL.createObjectURL(blob)
+      const link    = document.createElement('a')
+      const nombre  = usuarios.find(u => u.usuario_id === Number(usuarioId))?.nombre ?? usuarioId
+      link.href     = url
+      link.download = `comisiones_${nombre}_${desde}_${hasta}.xlsx`
       link.click()
       URL.revokeObjectURL(url)
-
       mostrarAlerta('success', 'Reporte generado correctamente.')
     } catch (err) {
       mostrarAlerta('error', `Error al generar el reporte: ${err.message}`)
@@ -79,7 +65,6 @@ export default function ReportesPage() {
     }
   }
 
-  // ─── RENDER ────────────────────────────────────────────────────────────────
   return (
     <div className="page-container">
       <div className="page-header">
@@ -87,69 +72,53 @@ export default function ReportesPage() {
       </div>
 
       {alerta && (
-        <div className={`alerta alerta-${alerta.tipo}`}>{alerta.msg}</div>
+        <div className={`alerta alerta-${alerta.tipo}`}>
+          {alerta.msg}
+          <button className="alerta-cerrar" onClick={cerrarAlerta}>&times;</button>
+        </div>
       )}
 
       <div className="form-card">
-        <h3>Configurar reporte</h3>
-
+        <h3>Comisiones por vendedora</h3>
         <div className="acc-form">
 
-          {/* Tipo de reporte */}
-          <div className="form-group">
-            <label>Tipo de reporte</label>
-            <select
-              value={tipoReporte}
-              onChange={e => {
-                setTipoReporte(e.target.value)
-                setFiltrosExtra({})
-              }}
-            >
-              {REPORTES.map(r => (
-                <option key={r.key} value={r.key}>{r.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Rango de fechas */}
           <div className="form-row">
             <div className="form-group">
-              <label>Fecha desde</label>
-              <input
-                type="date"
-                value={fechaDesde}
-                max={fechaHasta || hoy}
-                onChange={e => setFechaDesde(e.target.value)}
-              />
+              <label>Local *</label>
+              <select value={localId} onChange={e => setLocalId(e.target.value)}>
+                <option value="">Seleccionar local...</option>
+                {locales.map(l => (
+                  <option key={l.local_id} value={l.local_id}>{l.nombre}</option>
+                ))}
+              </select>
             </div>
             <div className="form-group">
-              <label>Fecha hasta</label>
-              <input
-                type="date"
-                value={fechaHasta}
-                min={fechaDesde}
-                max={hoy}
-                onChange={e => setFechaHasta(e.target.value)}
-              />
+              <label>Vendedora *</label>
+              <select value={usuarioId} onChange={e => setUsuarioId(e.target.value)}>
+                <option value="">Seleccionar vendedora...</option>
+                {usuarios.map(u => (
+                  <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* Filtros adicionales según el tipo de reporte */}
-          {reporte.FiltrosExtra && (
-            <reporte.FiltrosExtra
-              valores={filtrosExtra}
-              onChange={setFiltrosExtra}
-            />
-          )}
+          <div className="form-row">
+            <div className="form-group">
+              <label>Fecha desde *</label>
+              <input type="date" value={desde} max={hasta || hoy}
+                onChange={e => setDesde(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Fecha hasta *</label>
+              <input type="date" value={hasta} min={desde} max={hoy}
+                onChange={e => setHasta(e.target.value)} />
+            </div>
+          </div>
 
-          {/* Botón generar */}
           <div className="form-actions">
-            <button
-              className="btn-export"
-              onClick={handleGenerar}
-              disabled={loading}
-            >
-              {loading ? 'Generando...' : '⬇ Generar reporte Excel'}
+            <button className="btn btn-primary" onClick={handleGenerar} disabled={loading}>
+              {loading ? 'Generando...' : 'Generar Excel'}
             </button>
           </div>
 

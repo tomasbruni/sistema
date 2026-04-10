@@ -43,6 +43,9 @@ from .modelscreate import (
     # Reparaciones
     ReparacionCreate,
     MarcaCelularCreate,
+
+    # Sobrantes / Faltantes
+    SobranteFaltanteUpsert,
 )
 
 __all__ = [
@@ -71,6 +74,7 @@ __all__ = [
     "IngresoLoteCreate",
     "ItemIngreso",
     "MarcaCelularCreate",
+    "SobranteFaltanteUpsert",
     "PedidoOnlineCreate",
     "DetallePedidoAccesorioCreate",
     "DetallePedidoCelularCreate",

@@ -62,7 +62,7 @@ function ModalDetalle({ detalles, admin, onClose }) {
                 <tbody>
                   {accesorios.map((a, i) => (
                     <tr key={i}>
-                      <td>{a.nombre}</td>
+                      <td>{a.nombre_producto}</td>
                       <td className="num">{fmt(a.precio_lista)}</td>
                       <td className={`num ${a.precio_unitario !== a.precio_lista ? "descuento" : ""}`}>
                         {fmt(a.precio_unitario)}

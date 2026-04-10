@@ -24,7 +24,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 
-LOGO_PATH = str(Path(__file__).resolve().parent.parent.parent.parent / "static" / "images" / "logo-pdf.png")
 
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 

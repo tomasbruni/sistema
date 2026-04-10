@@ -1,7 +1,7 @@
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, DateTime, func, UniqueConstraint, CheckConstraint   
+from sqlalchemy import Column, Date, DateTime, func, UniqueConstraint, CheckConstraint
 from enum import Enum
 
 
@@ -225,6 +225,20 @@ class PagoVenta(SQLModel, table=True):
     cuotas: Optional[int]
 
 
+class SobranteFaltante(SQLModel, table=True):
+    __tablename__ = "sobrantes_faltantes"  # type: ignore
+    __table_args__ = (
+        UniqueConstraint("fecha", "local_id", name="uq_sf_fecha_local"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    local_id: int = Field(foreign_key="locales.local_id")
+    usuario_id: int = Field(foreign_key="usuarios.usuario_id")
+    fecha: Optional[date] = Field(default=None, sa_column=Column(Date, server_default=func.current_date(), nullable=False))
+    sobrante: int = Field(default=0)
+    faltante: int = Field(default=0)
+
+
 class EgresoCaja(SQLModel, table=True):
     __tablename__ = "egresos_cajas"  # type: ignore
 
@@ -297,18 +311,48 @@ class Reparacion(SQLModel, table=True):
     __tablename__ = "reparaciones" #type: ignore
     
     reparacion_id: Optional[int] = Field(default=None, primary_key=True)
-    local_id: int = Field(foreign_key="locales.local_id")
-    usuario_id: int = Field(foreign_key="usuarios.usuario_id")
-    nombre_cliente: str  
-    telefono_cliente: str  
+    celular: str
+    nombre_cliente: str
+    telefono_cliente: str
+    dni_cliente: Optional[str] = None
     mail_cliente: Optional[str] = None
+    descripcion: Optional[str] = None
+    total: int
+    adelanto: int
+    pago_reparador: Optional[int] = None  
     estado: str
-    descripcion_falla: Optional[str] = None  
     fecha_ingreso: Optional[datetime] = Field(default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
     )
-    costo_reparador: int  
-    costo_final: Optional[int] = None
+    local_id: int = Field(foreign_key="locales.local_id")
+    usuario_id: int = Field(foreign_key="usuarios.usuario_id")
+
+
+class MovimientoReparacion(SQLModel, table=True):
+    __tablename__ = "movimientos_reparaciones"  # type: ignore
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    reparacion_id: int = Field(foreign_key="reparaciones.reparacion_id", index=True)
+    tipo_movimiento: str # CAMBIO DE ESTADO (ESTADO) | CAMBIO DE PRECIO (PRECIO)
+
+    # IGUALES SI ES CAMBIO DE PRECIO, DISTINTOS SI ES CAMBIO DE ESTADO
+    estado_anterior: Optional[str]
+    estado_nuevo: Optional[str]
+
+    # PARA MOVIMIENTOS DE TIPO CAMBIO DE PRECIO
+    monto_total_anterior: Optional[int] = None
+    monto_total_nuevo: Optional[int] = None 
+
+    # PARA TRANSICIONES DE TIPO ENTREGA
+    monto_entrega_recibido: Optional[int] = None
+
+
+    usuario_id: int = Field(foreign_key="usuarios.usuario_id")
+    fecha: Optional[datetime] = Field(default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+    observaciones: Optional[str] = Field(default=None, max_length=500)
+
 
 #AUX
 class Marca(SQLModel, table=True):

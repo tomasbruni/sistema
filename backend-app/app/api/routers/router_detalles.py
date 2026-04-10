@@ -13,6 +13,7 @@ from app.db.models import *
 from app.api.modelscreate import *
 from app.api.modelsupdate import *
 from app.api.funciones.accesorios_funciones import normalizar_texto, generar_sku_accesorio, generar_nombre_accesorio
+from app.api.funciones.ventas_funciones import get_detalles_by_venta, get_pagos_by_venta
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 
 from zoneinfo import ZoneInfo
@@ -35,51 +36,15 @@ def detalles_de_venta(
 
     vendedor = session.get(Usuario, venta.usuario_id)
 
-    accesorios = session.exec(
-        select(DetalleVentaAccesorio, Accesorio)
-        .join(Accesorio, Accesorio.accesorio_id == DetalleVentaAccesorio.accesorio_id) #type: ignore
-        .where(DetalleVentaAccesorio.venta_id == venta_id)
-    ).all()
-
-    celulares = session.exec(
-        select(DetalleVentaCelular, MarcaCelular, ModeloCelular)
-        .join(Celular, Celular.celular_id == DetalleVentaCelular.celular_id) #type: ignore
-        .join(MarcaCelular, MarcaCelular.marca_celular_id == Celular.marca_celular_id) #type: ignore
-        .join(ModeloCelular,ModeloCelular.modelo_celular_id == Celular.modelo_celular_id) #type: ignore
-        .where(DetalleVentaCelular.venta_id == venta_id)
-    ).all()
-
-    chips = session.exec(
-        select(DetalleVentaChip, Chip)
-        .join(Chip, Chip.chip_id == DetalleVentaChip.chip_id) #type: ignore
-        .where(DetalleVentaChip.venta_id == venta_id)
-    ).all()
+    detalles_by_venta = get_detalles_by_venta(session, [venta_id])
+    detalles = detalles_by_venta[venta_id]
 
     return {
         "venta_id": venta_id,
-        "vendedor": vendedor.nombre, #type: ignore
-        "accesorios": [
-            {
-                **detalle.model_dump(),
-                "nombre": accesorio.nombre,
-            }
-            for detalle, accesorio in accesorios
-        ],
-        "celulares": [
-            {
-                **detalle.model_dump(),
-                "marca": marca.nombre,
-                "modelo": modelo.nombre,
-            }
-            for detalle, marca, modelo in celulares
-        ],
-        "chips": [
-            {
-                **detalle.model_dump(),
-                "compania": chip.compania,
-            }
-            for detalle, chip in chips
-        ],
+        "vendedor": vendedor.nombre,  # type: ignore
+        "accesorios": [d for d in detalles if d["tipo_producto"] == "ACCESORIO"],
+        "celulares":  [d for d in detalles if d["tipo_producto"] == "CELULAR"],
+        "chips":      [d for d in detalles if d["tipo_producto"] == "CHIP"],
     }
 
 # ---- Schemas corregidos ----
@@ -170,60 +135,27 @@ def ventas_por_periodo(
     ventas_by_id = {v.venta_id: v for v in ventas}
 
     # --- Pagos agrupados por venta ---
-    pagos_by_venta: dict[int, list[PagoResumen]] = defaultdict(list)
-    for p in session.exec(select(PagoVenta).where(PagoVenta.venta_id.in_(venta_ids))).all(): #type: ignore
-        pagos_by_venta[p.venta_id].append(
-            PagoResumen(medio_de_pago=p.medio_de_pago, importe=p.importe)
-        )
+    pagos_by_venta: dict[int, list[PagoResumen]] = {
+        vid: [PagoResumen(medio_de_pago=p.medio_de_pago, importe=p.importe) for p in pagos]
+        for vid, pagos in get_pagos_by_venta(session, venta_ids).items() # type: ignore
+    }
 
     # --- Detalles agrupados por venta ---
-    detalles_by_venta: dict[int, list[DetalleRow]] = defaultdict(list)
-
-    # Accesorios
-    for detalle, acc in session.exec(
-        select(DetalleVentaAccesorio, Accesorio)
-        .join(Accesorio, DetalleVentaAccesorio.accesorio_id == Accesorio.accesorio_id) #type: ignore
-        .where(DetalleVentaAccesorio.venta_id.in_(venta_ids)) #type: ignore
-    ).all():
-        detalles_by_venta[detalle.venta_id].append(DetalleRow(
-            tipo_producto="ACCESORIO",
-            nombre_producto=acc.nombre,
-            precio_lista=detalle.precio_lista,
-            precio_unitario=detalle.precio_unitario,
-            cantidad=detalle.cantidad,
-        ))
-
-    # Celulares
-    for detalle, cel, modelo, marca in session.exec(
-        select(DetalleVentaCelular, Celular, ModeloCelular, MarcaCelular)
-        .join(Celular, DetalleVentaCelular.celular_id == Celular.celular_id) #type: ignore
-        .join(ModeloCelular, Celular.modelo_celular_id == ModeloCelular.modelo_celular_id) #type: ignore
-        .join(MarcaCelular, Celular.marca_celular_id == MarcaCelular.marca_celular_id) #type: ignore
-        .where(DetalleVentaCelular.venta_id.in_(venta_ids)) #type: ignore
-    ).all():
-        detalles_by_venta[detalle.venta_id].append(DetalleRow(
-            tipo_producto="CELULAR",
-            nombre_producto=f"{marca.nombre} {modelo.nombre}",
-            precio_lista=detalle.precio_lista,
-            precio_unitario=detalle.precio_unitario,
-            cantidad=1,
-            codigo=cel.imei,
-        ))
-
-    # Chips
-    for detalle, chip in session.exec(
-        select(DetalleVentaChip, Chip)
-        .join(Chip, DetalleVentaChip.chip_id == Chip.chip_id) #type: ignore
-        .where(DetalleVentaChip.venta_id.in_(venta_ids)) #type: ignore
-    ).all():
-        detalles_by_venta[detalle.venta_id].append(DetalleRow(
-            tipo_producto="CHIP",
-            nombre_producto=f"Chip {chip.compania}",
-            precio_lista=detalle.precio_lista,
-            precio_unitario=detalle.precio_unitario,
-            cantidad=1,
-            codigo = chip.numero_serie,
-        ))
+    raw = get_detalles_by_venta(session, venta_ids) #type: ignore
+    detalles_by_venta: dict[int, list[DetalleRow]] = {
+        vid: [
+            DetalleRow(
+                tipo_producto=d["tipo_producto"],
+                nombre_producto=d["nombre_producto"],
+                precio_lista=d["precio_lista"],
+                precio_unitario=d["precio_unitario"],
+                cantidad=d["cantidad"],
+                codigo=d["codigo"],
+            )
+            for d in dets
+        ]
+        for vid, dets in raw.items()
+    }
 
     # --- Armar respuesta ---
     ventas_rows = [

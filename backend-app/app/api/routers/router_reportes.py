@@ -11,14 +11,19 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 from app.db.session import get_session
-from app.db.models import PagoVenta, Venta, Local, Usuario
+from app.db.models import (
+    PagoVenta, Venta, Local, Usuario,
+    MovimientoReparacion, Reparacion, ConfigComision, SobranteFaltante,
+)
+from app.api.deps import get_current_user, require_admin, UsuarioActual
+from app.api.funciones.ventas_funciones import get_detalles_by_venta
+from zoneinfo import ZoneInfo
 
-from app.api.deps import get_current_user, require_admin
+TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
 
 router = APIRouter(
     prefix="/reportes",
     tags=["REPORTES"],
-    dependencies=[Depends(require_admin)],
 )
 
 
@@ -290,4 +295,331 @@ def exportar_reporte_iva(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={nombre}.xlsx"},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REPORTE DE COMISIONES
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _calcular_comision_config(config: ConfigComision | None, monto: int) -> int:
+    if config is None:
+        return 0
+    if config.tipo_calculo == "PORCENTAJE":
+        return round(monto * config.valor / 100)
+    return config.valor  # FIJO: monto fijo por unidad/reparación
+
+
+def _fmt_fecha_ar(dt: datetime | None) -> str:
+    if not dt:
+        return "-"
+    return dt.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M")
+
+
+def _build_comisiones_excel(
+    local_nombre: str,
+    usuario_nombre: str,
+    fecha_label: str,
+    detalles_acc: list,   # dicts con campos de venta + "fecha"
+    detalles_cel: list,
+    detalles_chip: list,
+    entregas_rep: list,   # list of (MovimientoReparacion, Reparacion)
+    config_rep: ConfigComision | None,
+    config_acc: ConfigComision | None,
+    sf_por_dia: dict,     # {date: (sobrante, faltante)} solo donde alguno > 0
+) -> bytes:
+    from collections import defaultdict
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Comisiones"  # type: ignore
+
+    # ── Estilos ────────────────────────────────────────────────────────────────
+    thin      = Side(style="thin")
+    border    = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center_al = Alignment(horizontal="center", vertical="center")
+    right_al  = Alignment(horizontal="right",  vertical="center")
+    left_al   = Alignment(horizontal="left",   vertical="center")
+
+    hdr_font = Font(bold=True, size=10, underline="single")
+    bold_tot = Font(bold=True, size=10)
+
+    def _cell(row, col, value=None, font=None, alignment=None, border_=None):
+        c = ws.cell(row=row, column=col, value=value)  # type: ignore
+        if font:      c.font      = font
+        if alignment: c.alignment = alignment
+        if border_:   c.border    = border_
+        return c
+
+    def _hdr_row(row, labels):
+        for col, lbl in enumerate(labels, 1):
+            _cell(row, col, lbl, font=hdr_font, alignment=center_al, border_=border)
+        ws.row_dimensions[row].height = 28  # type: ignore
+
+    def _dat_row(row, values, font=None):
+        for col, val in enumerate(values, 1):
+            al = right_al if isinstance(val, (int, float)) else left_al
+            _cell(row, col, val, font=font, alignment=al, border_=border)
+
+    # ── Cálculos globales ──────────────────────────────────────────────────────
+    com_rep_por_entrega = [
+        _calcular_comision_config(config_rep, rep.total)
+        for _, rep in entregas_rep
+    ] # capaz conviene sumar primero y calcular el porcentaje despues
+
+    total_monto_acc  = sum(d["precio_unitario"] * d["cantidad"] for d in detalles_acc)
+    total_monto_cel  = sum(d["precio_unitario"]                  for d in detalles_cel)
+    total_monto_chip = sum(d["precio_unitario"]                  for d in detalles_chip)
+    total_monto_rep  = sum(rep.total for _, rep in entregas_rep)
+
+    total_com_acc  = sum(d["comision_importe"] for d in detalles_acc)
+    total_com_cel  = sum(d["comision_importe"] for d in detalles_cel)
+    total_com_chip = sum(d["comision_importe"] for d in detalles_chip)
+    total_com_rep  = sum(com_rep_por_entrega)
+
+    total_sob = sum(v[0] for v in sf_por_dia.values())
+    total_fal = sum(v[1] for v in sf_por_dia.values())
+    total_com_sob  = _calcular_comision_config(config_acc, total_sob)
+    total_com_fal  = _calcular_comision_config(config_acc, total_fal)
+    total_com      = total_com_acc + total_com_cel + total_com_chip + total_com_rep + total_com_sob - total_com_fal
+
+    # ── Agrupar por día ────────────────────────────────────────────────────────
+    def _date_of(dt) -> date:
+        if dt is None:
+            return date.min
+        if hasattr(dt, "astimezone"):
+            return dt.astimezone(TZ_AR).date()
+        if hasattr(dt, "date"):
+            return dt.date()
+        return dt
+
+    daily_acc:      dict[date, int] = defaultdict(int)
+    daily_cel:      dict[date, int] = defaultdict(int)
+    daily_cel_cant: dict[date, int] = defaultdict(int)
+    daily_chip:     dict[date, int] = defaultdict(int)
+    daily_chip_cant:dict[date, int] = defaultdict(int)
+    daily_rep:      dict[date, int] = defaultdict(int)
+
+    #aca agrupa por fecha en un diccionario
+    for d in detalles_acc:
+        daily_acc[_date_of(d["fecha"])] += d["precio_unitario"] * d["cantidad"] # correcto si hay devoluciones se quita
+    for d in detalles_cel:
+        daily_cel[_date_of(d["fecha"])]      += d["precio_unitario"]
+        daily_cel_cant[_date_of(d["fecha"])] += 1
+    for d in detalles_chip:
+        daily_chip[_date_of(d["fecha"])]      += d["precio_unitario"]
+        daily_chip_cant[_date_of(d["fecha"])] += 1
+    for (mov, rep), _com in zip(entregas_rep, com_rep_por_entrega):
+        daily_rep[_date_of(mov.fecha)] += rep.total
+
+    all_dates = sorted(
+        daily_acc.keys() | daily_cel.keys() | daily_chip.keys()
+        | daily_rep.keys() | sf_por_dia.keys()
+    ) # en las fechas que no hubo actividad no pone nada
+
+    # ══ ENCABEZADO ════════════════════════════════════════════════════════════
+    ws.merge_cells("A1:J1")  # type: ignore
+    _cell(1, 1, "REPORTE DE COMISIONES",
+          font=Font(bold=True, size=14),
+          alignment=Alignment(horizontal="center", vertical="center"))
+    ws.row_dimensions[1].height = 30  # type: ignore
+
+    ws.merge_cells("A2:J2")  # type: ignore
+    _cell(2, 1,
+          f"Local: {local_nombre}  |  Vendedor/a: {usuario_nombre}  |  Período: {fecha_label}",
+          font=Font(italic=True, size=10),
+          alignment=Alignment(horizontal="center"))
+
+    ws.merge_cells("A3:J3")  # type: ignore
+    _cell(3, 1, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+          font=Font(italic=True, size=9),
+          alignment=Alignment(horizontal="right"))
+
+    # ══ TABLA 1: FACTURACIÓN POR DÍA ════════════════════════════════════════
+    FILA_T1_LBL = 5
+    ws.merge_cells(f"A{FILA_T1_LBL}:J{FILA_T1_LBL}")  # type: ignore
+    _cell(FILA_T1_LBL, 1, "Facturación por día",
+          font=Font(bold=True, size=11), alignment=left_al)
+
+    FILA_T1_HDR = FILA_T1_LBL + 1
+    _hdr_row(FILA_T1_HDR, [
+        "Fecha", "Accesorios", "Celulares", "Cant. Cel.",
+        "Chips", "Cant. Chips", "Reparaciones", "Total día", "Sobrante", "Faltante",
+    ])
+
+    fila = FILA_T1_HDR + 1
+    for d in all_dates:
+        acc      = daily_acc.get(d, 0)
+        cel      = daily_cel.get(d, 0)
+        cel_cant = daily_cel_cant.get(d, 0)
+        chip     = daily_chip.get(d, 0)
+        chip_cant= daily_chip_cant.get(d, 0)
+        rep      = daily_rep.get(d, 0)
+        sob, fal = sf_por_dia.get(d, (0, 0))
+        _dat_row(fila, [
+            d.strftime("%d/%m/%Y"),
+            acc       or "",
+            cel       or "",
+            cel_cant  or "",
+            chip      or "",
+            chip_cant or "",
+            rep       or "",
+            acc + cel + chip + rep or "",
+            sob or "",
+            fal or "",
+        ])
+        fila += 1
+
+    # Totales tabla 1
+    _dat_row(fila, [
+        "TOTAL",
+        total_monto_acc  or "",
+        total_monto_cel  or "",
+        len(detalles_cel)  or "",
+        total_monto_chip or "",
+        len(detalles_chip) or "",
+        total_monto_rep  or "",
+        total_monto_acc + total_monto_cel + total_monto_chip + total_monto_rep,
+        total_sob or "",
+        total_fal or "",
+    ], font=bold_tot)
+    ws.cell(row=fila, column=1).alignment = center_al  # type: ignore
+    fila += 1
+
+    # ══ TABLA 2: RESUMEN POR CATEGORÍA + COMISIONES ═══════════════════════════
+    FILA_T2_LBL = fila + 2
+    ws.merge_cells(f"A{FILA_T2_LBL}:D{FILA_T2_LBL}")  # type: ignore
+    _cell(FILA_T2_LBL, 1, "Resumen por categoría",
+          font=Font(bold=True, size=11), alignment=left_al)
+
+    FILA_T2_HDR = FILA_T2_LBL + 1
+    _hdr_row(FILA_T2_HDR, ["Categoría", "Cant.", "Total facturado", "Comisión", "", "", "", "", "", ""])
+
+    resumen = [
+        ("Accesorios",              len(detalles_acc),  total_monto_acc,  total_com_acc),
+        ("Celulares",               len(detalles_cel),  total_monto_cel,  total_com_cel),
+        ("Chips",                   len(detalles_chip), total_monto_chip, total_com_chip),
+        ("Reparaciones entregadas", len(entregas_rep),  total_monto_rep,  total_com_rep),
+        ("Sobrantes",               len([v for v in sf_por_dia.values() if v[0] > 0]), total_sob, total_com_sob),
+        ("Faltantes",               len([v for v in sf_por_dia.values() if v[1] > 0]), total_fal, -total_com_fal),
+    ]
+    fila = FILA_T2_HDR + 1
+    for tipo, cant, monto, com in resumen:
+        _dat_row(fila, [tipo, cant, monto, com, "", "", "", "", "", ""])
+        fila += 1
+
+    grand_total = total_monto_acc + total_monto_cel + total_monto_chip + total_monto_rep
+    _dat_row(fila, ["TOTAL", "", grand_total, total_com, "", "", "", "", "", ""], font=bold_tot)
+    ws.cell(row=fila, column=1).alignment = center_al  # type: ignore
+
+    # ── Anchos de columna ──────────────────────────────────────────────────────
+    for col, width in enumerate([14, 14, 14, 10, 12, 11, 14, 13, 11, 11], start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width  # type: ignore
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+@router.get("/comisiones/excel")
+def reporte_comisiones_excel(
+    local_id: int,
+    usuario_id: int,
+    desde: date,
+    hasta: date,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin),
+):
+    dt_desde = datetime(desde.year, desde.month, desde.day, 0, 0, 0, tzinfo=TZ_AR)
+    dt_hasta = datetime(hasta.year, hasta.month, hasta.day, 23, 59, 59, tzinfo=TZ_AR)
+
+    local    = session.get(Local,   local_id)
+    usuario  = session.get(Usuario, usuario_id)
+    if not local:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Local no encontrado")
+    if not usuario:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Usuario no encontrado")
+
+    # ── Ventas del período ────────────────────────────────────────────────────
+    ventas = session.exec(
+        select(Venta)
+        .where(Venta.local_id      == local_id)
+        .where(Venta.usuario_id    == usuario_id)
+        .where(Venta.fecha_ingreso >= dt_desde)  # type: ignore
+        .where(Venta.fecha_ingreso <= dt_hasta)  # type: ignore
+    ).all()
+    venta_ids     = [v.venta_id for v in ventas]
+    fecha_by_venta = {v.venta_id: v.fecha_ingreso for v in ventas}
+
+    raw = get_detalles_by_venta(session, venta_ids) # type: ignore
+
+    detalles_acc  = []
+    detalles_cel  = []
+    detalles_chip = []
+    for vid, dets in raw.items():
+        for d in dets:
+            entry = {**d, "venta_id": vid, "fecha": fecha_by_venta.get(vid)} # agrega a cada detalle su fecha
+            if d["tipo_producto"] == "ACCESORIO":
+                detalles_acc.append(entry)
+            elif d["tipo_producto"] == "CELULAR":
+                detalles_cel.append(entry)
+            elif d["tipo_producto"] == "CHIP":
+                detalles_chip.append(entry)
+
+    # ── Reparaciones entregadas en el período (comisión al creador) ───────────
+    entregas_rep = session.exec(
+        select(MovimientoReparacion, Reparacion)
+        .join(Reparacion, MovimientoReparacion.reparacion_id == Reparacion.reparacion_id)  # type: ignore
+        .where(Reparacion.local_id    == local_id)
+        .where(Reparacion.usuario_id  == usuario_id)
+        .where(MovimientoReparacion.tipo_movimiento == "CAMBIO_ESTADO")
+        .where(MovimientoReparacion.estado_nuevo    == "ENTREGADO")
+        .where(MovimientoReparacion.fecha >= dt_desde)  # type: ignore
+        .where(MovimientoReparacion.fecha <= dt_hasta)  # type: ignore
+        .order_by(MovimientoReparacion.fecha)  # type: ignore
+    ).all()
+
+    # ── Config comisión reparaciones y accesorios ─────────────────────────────
+    config_rep = session.exec(
+        select(ConfigComision).where(ConfigComision.tipo_producto == "REPARACION")
+    ).first()
+    config_acc = session.exec(
+        select(ConfigComision).where(ConfigComision.tipo_producto == "ACCESORIO")
+    ).first()
+
+    # ── Sobrantes / faltantes del período para este usuario y local ───────────
+    sf_records = session.exec(
+        select(SobranteFaltante)
+        .where(SobranteFaltante.local_id   == local_id)
+        .where(SobranteFaltante.usuario_id == usuario_id)
+        .where(SobranteFaltante.fecha      >= desde)  # type: ignore
+        .where(SobranteFaltante.fecha      <= hasta)  # type: ignore
+        .where(
+            (SobranteFaltante.sobrante > 0) | (SobranteFaltante.faltante > 0)  # type: ignore
+        )
+    ).all()
+    sf_por_dia = {r.fecha: (r.sobrante, r.faltante) for r in sf_records}
+
+    fecha_label = f"{desde.strftime('%d/%m/%Y')} al {hasta.strftime('%d/%m/%Y')}"
+
+    xlsx_bytes = _build_comisiones_excel(
+        local_nombre=local.nombre,
+        usuario_nombre=usuario.nombre,
+        fecha_label=fecha_label,
+        detalles_acc=detalles_acc,
+        detalles_cel=detalles_cel,
+        detalles_chip=detalles_chip,
+        entregas_rep=list(entregas_rep),
+        config_rep=config_rep,
+        config_acc=config_acc,
+        sf_por_dia=sf_por_dia,
+    )
+
+    filename = f"comisiones_{usuario.nombre.replace(' ', '_')}_{desde}_{hasta}.xlsx"
+    return StreamingResponse(
+        BytesIO(xlsx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

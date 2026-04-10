@@ -13,17 +13,16 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 )
 
 # — tus imports locales —
 from app.db.models import (
-    Accesorio, Celular, Chip, DetalleVentaAccesorio, DetalleVentaCelular,
-    DetalleVentaChip, EgresoCaja, Local, MarcaCelular, ModeloCelular,
-    PagoVenta, Usuario, Venta,
+    EgresoCaja, Local, MovimientoReparacion, PagoVenta, Reparacion, SobranteFaltante, Usuario, Venta,
 )
 from app.db.session import get_session
 from app.api.deps import get_current_user, UsuarioActual
+from app.api.funciones.ventas_funciones import get_detalles_by_venta, get_pagos_by_venta
 
 router = APIRouter(prefix="/caja-diaria", tags=["Generar caja diaria"])
 TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
@@ -84,9 +83,9 @@ def _calcular_totales_por_tipo(ventas: list, detalles_by_venta: dict) -> tuple:
         signo = -1 if v.tipo == "DEVOLUCION" else 1
         for det in detalles_by_venta.get(v.venta_id, []):
             monto = det["precio_unitario"] * det["cantidad"] * signo
-            if det["tipo_producto"] == "ACC":
+            if det["tipo_producto"] == "ACCESORIO":
                 acc  += monto
-            elif det["tipo_producto"] == "CEL":
+            elif det["tipo_producto"] == "CELULAR":
                 cel  += monto
             elif det["tipo_producto"] == "CHIP":
                 chip += monto
@@ -98,19 +97,22 @@ def _build_pdf(
     vendedora_nombre: str,
     fecha_label: str,
     ventas: list,
-    ventas_by_id: dict,
     detalles_by_venta: dict,
     pagos_by_venta: dict,
     egresos: list,
+    reparaciones_creadas: list,
+    movimientos_rep: list,  # list of (MovimientoReparacion, Reparacion)
+    sobrante: int = 0,
+    faltante: int = 0,
 ) -> bytes:
-    from reportlab.lib.units import mm
+    from reportlab.lib.units import mm, inch
     from reportlab.platypus import PageBreak
  
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
-        leftMargin=10*mm, rightMargin=10*mm,
-        topMargin=10*mm, bottomMargin=10*mm,
+        leftMargin=5*mm, rightMargin=5*mm,
+        topMargin=0, bottomMargin=10*mm,
     )
     W = A4[0] - 20*mm
  
@@ -125,23 +127,41 @@ def _build_pdf(
     small      = ParagraphStyle("sm", parent=normal, fontSize=8)
  
     GRID_COLOR = colors.HexColor("#6B6B6B")
- 
+    
+    I = Image("static/images/logo-pdf-removebg.png")
+    I.drawHeight = 0.8 * inch 
+    I.drawWidth = 0.8 * inch
+
+
+    inner_table = Table([
+        [Paragraph("<b>CAJA DIARIA</b>",
+            ParagraphStyle("tit", parent=styles["Normal"],
+                           fontSize=13, fontName="Helvetica-Bold"))],
+        [Paragraph(f"<b>Fecha:</b> {fecha_label}", bold)]
+    ])
+
+    inner_table.setStyle(TableStyle([
+        ("VALIGN",(0,1),(0,1),"BOTTOM"),
+        ("BOTTOMPADDING",(0,1),(0,1),0),
+    ]))
+
     def _enc_table() -> Table:
         """Encabezado en fila reutilizable (hoja 1 y 2)."""
         t = Table([[
-            Paragraph("<b>CAJA DIARIA</b>",
-                      ParagraphStyle("tit", parent=styles["Normal"],
-                                     fontSize=13, fontName="Helvetica-Bold")),
-            Paragraph(f"<b>Fecha:</b> {fecha_label}", bold),
+            I,
+            inner_table,
             Paragraph(f"<b>Local:</b> {local_nombre}", bold),
-            Paragraph(f"<b>Vendedora:</b> {vendedora_nombre}", bold),
-        ]], colWidths=[W*0.28, W*0.22, W*0.22, W*0.28])
+            Paragraph(f"<b>Vendedor/a:</b> {vendedora_nombre}", bold),
+        ]
+        ], colWidths=[I.drawWidth,W*0.33, W*0.33, W*0.33], rowHeights=[0.5*inch])
         t.setStyle(TableStyle([
-            ("VALIGN",        (0,0),(-1,-1),"MIDDLE"),
-            ("LEFTPADDING",   (0,0),(-1,-1),4),
-            ("RIGHTPADDING",  (0,0),(-1,-1),4),
-            ("TOPPADDING",    (0,0),(-1,-1),3),
-            ("BOTTOMPADDING", (0,0),(-1,-1),3),
+            ("VALIGN",        (0,0),(0,0),"MIDDLE"),
+            ("VALIGN",        (1,0),(1,0),"TOP"),
+            ("VALIGN",        (2,0),(-1,-1),"BOTTOM"),
+            ("LEFTPADDING",   (0,0),(-1,-1),0),
+            ("RIGHTPADDING",  (0,0),(-1,-1),0),
+            ("TOPPADDING",    (0,0),(-1,-1),0),
+            ("BOTTOMPADDING", (2,0),(-1,-1),5.5),
             ("LINEBELOW",     (0,0),(-1,0), 0.75, colors.black),
         ]))
         return t
@@ -166,12 +186,12 @@ def _build_pdf(
         W*0.13,  # código
         W*0.08,  # p.lista
         W*0.08,  # p.unit
-        W*0.04,  # cant
+        W*0.05,  # cant
         W*0.16,  # pagos
         W*0.10,  # total
     ]
     header_row = [Paragraph(t, header_cel) for t in
-        ["ID","Tipo","Producto","Nombre","Código","P.Lista","P.Unit.","Cant.","Pagos","Total"]]
+        ["ID","Tipo","Gen.","Nombre","Código","P.Lista","Cobrado","Cant.","Pagos","Total"]]
  
     data       = [header_row]
     span_cmds  = []
@@ -182,9 +202,12 @@ def _build_pdf(
         pagos     = pagos_by_venta.get(v.venta_id, [])
         n         = max(len(detalles), 1)
         pagos_str = "\n".join(
-            f"{p.medio_de_pago}: {_fmt_pesos(p.importe)}" for p in pagos
+            f"{p.medio_de_pago}"
+            f": {_fmt_pesos(p.importe)}"
+            f"{f' ({p.cuotas} cuotas)' if p.medio_de_pago == 'CREDITO' else ''}"
+            for p in pagos
         ) or "-"
- 
+
         for d_idx in range(n):
             det = detalles[d_idx] if d_idx < len(detalles) else None
             if d_idx == 0: # la primera fila de la venta(el primer detalle)
@@ -196,7 +219,8 @@ def _build_pdf(
                 c_id = c_tipo = c_pagos = c_total = Paragraph("", cell)
  
             if det:
-                c_prod   = Paragraph(det["tipo_producto"], cell)
+                _abrev = {"ACCESORIO": "ACC", "CELULAR": "CEL", "CHIP": "CHIP"}
+                c_prod   = Paragraph(_abrev.get(det["tipo_producto"], det["tipo_producto"]), cell) #type: ignore
                 c_nombre = Paragraph(det["nombre_producto"], cell)
                 c_codigo = Paragraph(det.get("codigo") or "-", cell)
                 c_lista  = Paragraph(_fmt_pesos(det["precio_lista"]), cell)
@@ -319,11 +343,98 @@ def _build_pdf(
         ("LINEBELOW",     (0,0),(-1,-1),1,colors.black),
     ]))
     story.append(neto_row)
- 
-    # ══ HOJA 2: EGRESOS ══
+
+    # ── Reparaciones ──
     story.append(PageBreak())
     story.append(_enc_table())
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph("REPARACIONES", seccion))
+
+    rep_ef = sum(r.adelanto for r in reparaciones_creadas)
+    rep_ef += sum(
+        mov.monto_entrega_recibido
+        for mov, _ in movimientos_rep
+        if mov.estado_nuevo == "ENTREGADO" and mov.monto_entrega_recibido
+    )
+    ef_total += rep_ef
+
+    hay_movimientos_rep = reparaciones_creadas or movimientos_rep
+    if not hay_movimientos_rep:
+        story.append(Paragraph("Sin movimientos de reparaciones en el período.", styles["Normal"]))
+    else:
+        rep_col_widths = [W*0.05, W*0.15, W*0.23, W*0.22, W*0.17, W*0.18]
+        rep_header = [Paragraph(t, header_cel) for t in
+            ["ID", "Tipo", "Celular", "Cliente", "Movimiento", "Monto cobrado"]]
+        rep_data = [rep_header]
+
+        for r in reparaciones_creadas:
+            rep_data.append([
+                Paragraph(str(r.reparacion_id), cell),
+                Paragraph("CREACION", cell),
+                Paragraph(r.celular, cell),
+                Paragraph(r.nombre_cliente, cell),
+                Paragraph("Adelanto", cell),
+                Paragraph(_fmt_pesos(r.adelanto), cell_bold),
+            ])
+
+        for mov, rep in movimientos_rep:
+            if mov.tipo_movimiento == "CAMBIO_ESTADO" and mov.estado_nuevo == "ENTREGADO":
+                tipo_label = "ENTREGA"
+                mov_label = "Saldo restante"
+                monto_str = _fmt_pesos(mov.monto_entrega_recibido) if mov.monto_entrega_recibido else "-"
+                monto_style = cell_bold
+            elif mov.tipo_movimiento == "CAMBIO_ESTADO":
+                tipo_label = "CAMBIO ESTADO"
+                mov_label = f"{mov.estado_anterior} → {mov.estado_nuevo}"
+                monto_str = "-"
+                monto_style = cell
+            else:  # CAMBIO_PRECIO
+                tipo_label = "CAMBIO PRECIO"
+                mov_label = f"{_fmt_pesos(mov.monto_total_anterior)} → {_fmt_pesos(mov.monto_total_nuevo)}" if mov.monto_total_anterior is not None else "-"
+                monto_str = "-"
+                monto_style = cell
+            rep_data.append([
+                Paragraph(str(rep.reparacion_id), cell),
+                Paragraph(tipo_label, cell),
+                Paragraph(rep.celular, cell),
+                Paragraph(rep.nombre_cliente, cell),
+                Paragraph(mov_label, cell),
+                Paragraph(monto_str, monto_style),
+            ])
+
+        rep_style = [
+            ("FONTSIZE",      (0,0),(-1,-1),7.5),
+            ("GRID",          (0,0),(-1,-1),0.25, GRID_COLOR),
+            ("LINEBELOW",     (0,0),(-1,0), 0.75, colors.black),
+            ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
+            ("VALIGN",        (0,0),(-1,-1),"TOP"),
+            ("LEFTPADDING",   (0,0),(-1,-1),3),
+            ("RIGHTPADDING",  (0,0),(-1,-1),3),
+            ("TOPPADDING",    (0,0),(-1,-1),2),
+            ("BOTTOMPADDING", (0,0),(-1,-1),2),
+        ]
+        rep_tbl = Table(rep_data, colWidths=rep_col_widths, repeatRows=1)
+        rep_tbl.setStyle(TableStyle(rep_style))
+        story.append(rep_tbl)
+
+    story.append(Spacer(1, 4))
+    rep_subtotal = Table(
+        [[Paragraph("TOTAL REPARACIONES (efectivo)", bold), Paragraph(_fmt_pesos(rep_ef), bold)]],
+        colWidths=[W*0.82, W*0.18],
+    )
+    rep_subtotal.setStyle(TableStyle([
+        ("FONTSIZE",      (0,0),(-1,-1),9),
+        ("ALIGN",         (1,0),(1,-1),"RIGHT"),
+        ("TOPPADDING",    (0,0),(-1,-1),2),
+        ("BOTTOMPADDING", (0,0),(-1,-1),2),
+        ("LEFTPADDING",   (0,0),(-1,-1),4),
+        ("RIGHTPADDING",  (0,0),(-1,-1),4),
+        ("LINEABOVE",     (0,0),(-1,-1),0.75,colors.black),
+    ]))
+    story.append(rep_subtotal)
+
+    # ── Egresos ──
+    story.append(Spacer(1, 10))
     story.append(Paragraph("EGRESOS", seccion))
  
     if not egresos:
@@ -417,12 +528,14 @@ def _build_pdf(
     story.append(bal_tbl)
     story.append(Spacer(1, 10))
         
- # Sobrante / Faltante / Firma
+    # Sobrante / Faltante / Firma
+    sf_sobrante = _fmt_pesos(sobrante) if sobrante else "No hay sobrantes"
+    sf_faltante = _fmt_pesos(faltante) if faltante else "No hay faltantes"
     sf_data = [
         [Paragraph("Sobrante:", small),
          Paragraph("Faltante:", small),
          Paragraph("Firma vendedora:", small)],
-        [Paragraph("", small), Paragraph("", small), Paragraph("", small)],
+        [Paragraph(sf_sobrante, bold), Paragraph(sf_faltante, bold), Paragraph("", small)],
     ]
     sf_table = Table(
         sf_data,
@@ -479,7 +592,7 @@ def caja_diaria_pdf(
     usuario_id = usuario_id if usuario_id is not None else usuario.usuario_id
 
     # --- Validar local y vendedora ---
-    local = session.get(Local, local_id)
+    local = session.get(Local, local_id)# type: ignore
     if not local:
         raise HTTPException(status_code=404, detail="Local no encontrado")
  
@@ -499,63 +612,10 @@ def caja_diaria_pdf(
     venta_ids = [v.venta_id for v in ventas]
  
     # --- Pagos ---
-    pagos_by_venta: dict[int, list] = defaultdict(list)
-    if venta_ids:
-        for p in session.exec(
-            select(PagoVenta).where(PagoVenta.venta_id.in_(venta_ids))  # type: ignore
-        ).all():
-            pagos_by_venta[p.venta_id].append(p)
+    pagos_by_venta = get_pagos_by_venta(session, venta_ids) # type: ignore
  
     # --- Detalles ---
-    detalles_by_venta: dict[int, list] = defaultdict(list)
- 
-    if venta_ids:
-        # Accesorios
-        for detalle, acc in session.exec(
-            select(DetalleVentaAccesorio, Accesorio)
-            .join(Accesorio, DetalleVentaAccesorio.accesorio_id == Accesorio.accesorio_id)  # type: ignore
-            .where(DetalleVentaAccesorio.venta_id.in_(venta_ids))  # type: ignore
-        ).all():
-            detalles_by_venta[detalle.venta_id].append({
-                "tipo_producto": "ACC",
-                "nombre_producto": acc.nombre,
-                "codigo": acc.sku,
-                "precio_lista": detalle.precio_lista,
-                "precio_unitario": detalle.precio_unitario,
-                "cantidad": detalle.cantidad,
-            })
- 
-        # Celulares
-        for detalle, cel, modelo, marca in session.exec(
-            select(DetalleVentaCelular, Celular, ModeloCelular, MarcaCelular)
-            .join(Celular, DetalleVentaCelular.celular_id == Celular.celular_id)  # type: ignore
-            .join(ModeloCelular, Celular.modelo_celular_id == ModeloCelular.modelo_celular_id)  # type: ignore
-            .join(MarcaCelular, Celular.marca_celular_id == MarcaCelular.marca_celular_id)  # type: ignore
-            .where(DetalleVentaCelular.venta_id.in_(venta_ids))  # type: ignore
-        ).all():
-            detalles_by_venta[detalle.venta_id].append({
-                "tipo_producto": "CEL",
-                "nombre_producto": f"{marca.nombre} {modelo.nombre}",
-                "codigo": cel.imei,
-                "precio_lista": detalle.precio_lista,
-                "precio_unitario": detalle.precio_unitario,
-                "cantidad": 1,
-            })
- 
-        # Chips
-        for detalle, chip in session.exec(
-            select(DetalleVentaChip, Chip)
-            .join(Chip, DetalleVentaChip.chip_id == Chip.chip_id)  # type: ignore
-            .where(DetalleVentaChip.venta_id.in_(venta_ids))  # type: ignore
-        ).all():
-            detalles_by_venta[detalle.venta_id].append({
-                "tipo_producto": "CHIP",
-                "nombre_producto": f"Chip {chip.compania}",
-                "codigo": chip.numero_serie,
-                "precio_lista": detalle.precio_lista,
-                "precio_unitario": detalle.precio_unitario,
-                "cantidad": 1,
-            })
+    detalles_by_venta = get_detalles_by_venta(session, venta_ids) # type: ignore
  
     # --- Egresos ---
     eg_query = (
@@ -567,17 +627,53 @@ def caja_diaria_pdf(
         .order_by(EgresoCaja.fecha)  # type: ignore
     )
     egresos = session.exec(eg_query).all()
- 
+
+    # --- Reparaciones creadas en el rango ---
+    reparaciones_creadas = session.exec(
+        select(Reparacion)
+        .where(Reparacion.local_id == local_id)
+        .where(Reparacion.usuario_id == usuario_id)
+        .where(Reparacion.fecha_ingreso >= dt_desde)  # type: ignore
+        .where(Reparacion.fecha_ingreso <= dt_hasta)  # type: ignore
+        .order_by(Reparacion.fecha_ingreso)  # type: ignore
+    ).all()
+
+    # --- Movimientos de reparaciones del rango (join para filtrar por local y usuario) ---
+    movimientos_rep = session.exec(
+        select(MovimientoReparacion, Reparacion)
+        .join(Reparacion, MovimientoReparacion.reparacion_id == Reparacion.reparacion_id)  # type: ignore
+        .where(Reparacion.local_id == local_id)
+        .where(MovimientoReparacion.usuario_id == usuario_id)
+        .where(MovimientoReparacion.fecha >= dt_desde)  # type: ignore
+        .where(MovimientoReparacion.fecha <= dt_hasta)  # type: ignore
+        .order_by(MovimientoReparacion.fecha)  # type: ignore
+    ).all()
+
+    # --- Sobrante / Faltante (solo aplica a consulta de día exacto) ---
+    sf_sobrante = sf_faltante = 0
+    if fecha:
+        sf = session.exec(
+            select(SobranteFaltante)
+            .where(SobranteFaltante.fecha == fecha)
+            .where(SobranteFaltante.local_id == local_id)
+        ).first()
+        if sf:
+            sf_sobrante = sf.sobrante
+            sf_faltante = sf.faltante
+
     # --- Generar PDF ---
     pdf_bytes = _build_pdf(
         local_nombre=local.nombre,
         vendedora_nombre=vendedora.nombre,
         fecha_label=fecha_label,
         ventas=list(ventas),
-        ventas_by_id={v.venta_id: v for v in ventas},
         detalles_by_venta=detalles_by_venta,
         pagos_by_venta=pagos_by_venta,
         egresos=list(egresos),
+        reparaciones_creadas=list(reparaciones_creadas),
+        movimientos_rep=list(movimientos_rep),
+        sobrante=sf_sobrante,
+        faltante=sf_faltante,
     )
  
     filename = f"caja_{local.nombre.replace(' ', '_')}_{fecha_label.replace('/', '-')}.pdf"

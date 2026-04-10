@@ -123,12 +123,20 @@ def crear_venta(
             usuarioAsignado = current_user.usuario_id
             
         # ── 1. Crear la venta principal (monto_total se actualiza al final) ───
-        venta = Venta(
+        venta_kwargs: dict = dict(
             local_id=venta_data.local_id,
-            usuario_id=usuarioAsignado, # type: ignore
+            usuario_id=usuarioAsignado,
             monto_total=0,  # se calcula y actualiza antes del commit
             tipo=venta_data.tipo.upper(),
         )
+        if current_user.rol == 'admin' and venta_data.fecha_ingreso is not None:
+            if venta_data.fecha_ingreso.tzinfo is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="fecha_ingreso debe incluir zona horaria (ej: 2026-04-08T10:00:00-03:00)."
+                )
+            venta_kwargs["fecha_ingreso"] = venta_data.fecha_ingreso
+        venta = Venta(**venta_kwargs)
         session.add(venta)
         session.flush()  # obtener venta_id
 

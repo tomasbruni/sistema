@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from sqlmodel import SQLModel, Field
 from app.db.models import TipoMovimiento
 
@@ -164,16 +164,26 @@ class DetalleChipCreate(SQLModel):
 # REPARACIONES
 # =====================
 class ReparacionCreate(SQLModel):
-    local_id: int
-    usuario_id: int
+    celular: str
     nombre_cliente: str
     telefono_cliente: str
+    dni_cliente: Optional[str] = None
     mail_cliente: Optional[str] = None
-    estado: str
-    descripcion_falla: Optional[str] = None
-    fecha_ingreso: Optional[datetime] = None
-    costo_reparador: int
-    costo_final: Optional[int] = None
+    descripcion: Optional[str] = None
+    total: int
+    adelanto: int
+    local_id: int
+
+# =====================
+# SOBRANTES / FALTANTES
+# =====================
+class SobranteFaltanteUpsert(SQLModel):
+    local_id: int = Field(..., gt=0)
+    usuario_id: Optional[int] = None   # solo admin puede especificar otro usuario
+    fecha: Optional[date] = None       # solo admin puede sobreescribir; no-admin usa hoy (AR)
+    sobrante: int = Field(default=0, ge=0)
+    faltante: int = Field(default=0, ge=0)
+
 
 # =====================
 # VENTA
@@ -223,6 +233,7 @@ class VentaCreate(SQLModel):
     local_id: int = Field(..., gt=0)
     usuario_id: Optional[int] = None
     tipo: str  # VENTA | DEVOLUCION
+    fecha_ingreso: Optional[datetime] = None  # solo admin puede sobreescribir
 
     pagos: List[PagoVentaCreate] = Field(..., min_length=1)
  
