@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
+from pydantic import BaseModel
 
 from typing import Optional, List
 from sqlmodel import Session, SQLModel, select, col
@@ -12,8 +13,88 @@ from app.api.modelscreate import *
 from app.api.modelsupdate import *
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 
-router = APIRouter(prefix="/celulares", 
+router = APIRouter(prefix="/celulares",
                    tags=["Celulares"])
+
+
+class SeedCelularItem(BaseModel):
+    marca: str
+    modelo: str
+    imei: str
+    precio: int
+
+
+class SeedCelularesRequest(BaseModel):
+    local_id: int
+    estado: str = "DISPONIBLE"
+    data: List[SeedCelularItem]
+
+
+@router.post("/seed")
+def seed_celulares(
+    request: SeedCelularesRequest,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin)
+):
+    """
+    Carga masiva de celulares referenciando marca y modelo por nombre.
+    Es idempotente: si el IMEI ya existe lo omite.
+    """
+    local = session.get(Local, request.local_id)
+    if not local:
+        raise HTTPException(status_code=404, detail="Local no encontrado")
+
+    creados = []
+    omitidos = []
+    errores = []
+
+    for item in request.data:
+        # Idempotencia por IMEI
+        if session.exec(select(Celular).where(Celular.imei == item.imei)).first():
+            omitidos.append(item.imei)
+            continue
+
+        marca = session.exec(
+            select(MarcaCelular).where(MarcaCelular.nombre == item.marca)
+        ).first()
+        if not marca:
+            errores.append({"imei": item.imei, "motivo": f"Marca '{item.marca}' no encontrada"})
+            continue
+
+        modelo = session.exec(
+            select(ModeloCelular).where(
+                ModeloCelular.nombre == item.modelo,
+                ModeloCelular.marca_celular_id == marca.marca_celular_id
+            )
+        ).first()
+        if not modelo:
+            errores.append({"imei": item.imei, "motivo": f"Modelo '{item.modelo}' no encontrado para marca '{item.marca}'"})
+            continue
+
+        try:
+            celular = Celular(
+                marca_celular_id=marca.marca_celular_id,
+                modelo_celular_id=modelo.modelo_celular_id,
+                imei=item.imei,
+                precio=item.precio,
+                local_id=request.local_id,
+                estado=request.estado,
+            )
+            session.add(celular)
+            session.flush()
+            creados.append({"imei": item.imei, "marca": item.marca, "modelo": item.modelo})
+        except Exception as e:
+            session.rollback()
+            errores.append({"imei": item.imei, "motivo": str(e)})
+            continue
+
+    session.commit()
+
+    return {
+        "creados": creados,
+        "omitidos": omitidos,
+        "errores": errores,
+    }
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)

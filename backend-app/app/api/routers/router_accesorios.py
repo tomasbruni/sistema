@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
+from pydantic import BaseModel
 
-from typing import Optional
+from typing import Optional, List
 from sqlmodel import Session, SQLModel, select, col
 from sqlalchemy import exc
 
@@ -21,6 +22,101 @@ from openpyxl.styles import Font, PatternFill, Alignment
 router = APIRouter(prefix="/accesorios",
                    tags=["ACCESORIOS"],
                    responses={404: {"message": "No encontrado"}})
+
+
+class SeedAccesorioItem(BaseModel):
+    tipo: str
+    subtipo: Optional[str] = None
+    nombre: str
+    precio: int
+
+
+class SeedAccesoriosRequest(BaseModel):
+    data: List[SeedAccesorioItem]
+
+
+@router.post("/seed")
+def seed_accesorios(
+    request: SeedAccesoriosRequest,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin)
+):
+    """
+    Carga masiva de accesorios referenciando tipo y subtipo por nombre.
+    Es idempotente: si ya existe un accesorio con el mismo nombre+tipo+subtipo lo omite.
+    Crea entradas de stock en 0 para cada local.
+    """
+    locales = session.exec(select(Local)).all()
+    if not locales:
+        raise HTTPException(status_code=400, detail="No hay locales registrados")
+
+    creados = []
+    omitidos = []
+    errores = []
+
+    for item in request.data:
+        # Resolver tipo por nombre
+        tipo = session.exec(
+            select(TipoAccesorio).where(TipoAccesorio.nombre == item.tipo)
+        ).first()
+        if not tipo:
+            errores.append({"item": item.nombre, "motivo": f"Tipo '{item.tipo}' no encontrado"})
+            continue
+
+        # Resolver subtipo por nombre (opcional)
+        subtipo_id = None
+        if item.subtipo:
+            subtipo = session.exec(
+                select(SubtipoAccesorio).where(
+                    SubtipoAccesorio.tipo_id == tipo.tipo_id,
+                    SubtipoAccesorio.nombre == item.subtipo
+                )
+            ).first()
+            if not subtipo:
+                errores.append({"item": item.nombre, "motivo": f"Subtipo '{item.subtipo}' no encontrado para tipo '{item.tipo}'"})
+                continue
+            subtipo_id = subtipo.subtipo_id
+
+        # Verificar duplicado
+        stmt = select(Accesorio).where(
+            Accesorio.nombre == item.nombre,
+            Accesorio.tipo_id == tipo.tipo_id,
+            Accesorio.activo == True,  # type: ignore
+        )
+        stmt = stmt.where(Accesorio.subtipo_id == subtipo_id)
+        if session.exec(stmt).first():
+            omitidos.append(item.nombre)
+            continue
+
+        try:
+            sku = generar_sku_accesorio(tipo_id=tipo.tipo_id, session=session, subtipo_id=subtipo_id)  # type: ignore
+            accesorio = Accesorio(
+                nombre=item.nombre,
+                precio=item.precio,
+                tipo_id=tipo.tipo_id,
+                subtipo_id=subtipo_id,
+                sku=sku,
+            )
+            session.add(accesorio)
+            session.flush()
+
+            session.add_all([
+                StockAccesorio(accesorio_id=accesorio.accesorio_id, local_id=local.local_id, cantidad=0)  # type: ignore
+                for local in locales
+            ])
+            creados.append({"nombre": item.nombre, "sku": sku, "tipo": item.tipo, "subtipo": item.subtipo})
+        except Exception as e:
+            session.rollback()
+            errores.append({"item": item.nombre, "motivo": str(e)})
+            continue
+
+    session.commit()
+
+    return {
+        "creados": creados,
+        "omitidos": omitidos,
+        "errores": errores,
+    }
 
 
 @router.get("/export")

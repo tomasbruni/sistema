@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
+from pydantic import BaseModel
 
 from typing import Optional, List
 from sqlmodel import select, col
@@ -17,6 +18,68 @@ router = APIRouter(
     prefix="/marcas-celulares",
     tags=["Marcas Celulares"],
 )
+
+
+class SeedMarcaItem(BaseModel):
+    marca: str
+    modelos: List[str]
+
+
+class SeedMarcasRequest(BaseModel):
+    data: List[SeedMarcaItem]
+
+
+@router.post("/seed")
+def seed_marcas_y_modelos(
+    request: SeedMarcasRequest,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin)
+):
+    """
+    Carga masiva de marcas y modelos de celulares.
+    Es idempotente: si la marca/modelo ya existe lo omite.
+    """
+    marcas_creadas = []
+    marcas_existentes = []
+    modelos_creados = []
+    modelos_existentes = []
+
+    for item in request.data:
+        marca = session.exec(
+            select(MarcaCelular).where(MarcaCelular.nombre == item.marca)
+        ).first()
+
+        if marca:
+            marcas_existentes.append(item.marca)
+        else:
+            marca = MarcaCelular(nombre=item.marca)
+            session.add(marca)
+            session.flush()
+            marcas_creadas.append(item.marca)
+
+        for nombre_modelo in item.modelos:
+            modelo = session.exec(
+                select(ModeloCelular).where(
+                    ModeloCelular.marca_celular_id == marca.marca_celular_id,
+                    ModeloCelular.nombre == nombre_modelo
+                )
+            ).first()
+
+            if modelo:
+                modelos_existentes.append({"marca": item.marca, "modelo": nombre_modelo})
+            else:
+                modelo = ModeloCelular(nombre=nombre_modelo, marca_celular_id=marca.marca_celular_id)
+                session.add(modelo)
+                modelos_creados.append({"marca": item.marca, "modelo": nombre_modelo})
+
+    session.commit()
+
+    return {
+        "marcas_creadas": marcas_creadas,
+        "marcas_existentes": marcas_existentes,
+        "modelos_creados": modelos_creados,
+        "modelos_existentes": modelos_existentes,
+    }
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
