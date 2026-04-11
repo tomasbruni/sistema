@@ -46,3 +46,8 @@ __pycache__/
 CLAUDE.md
 iniciar.sh
 Iniciar Sistema.desktop
+
+# =========================
+# 🔹 Seeds
+# =========================
+backend-app/seed_*.json
