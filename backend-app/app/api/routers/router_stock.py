@@ -836,3 +836,44 @@ def registro_movimiento_stock(
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
+
+@router.post("/seed-stock")
+def seed_stock(
+    cantidad: int = 100,
+    sumar: bool = True,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin)
+):
+    """
+    Ajusta el stock de todos los accesorios activos en todos los locales.
+    - sumar=true (default): suma `cantidad` al stock actual.
+    - sumar=false: setea el stock exactamente a `cantidad`.
+    Registra un movimiento AJUSTE por cada fila modificada.
+    """
+    stocks = session.exec(
+        select(StockAccesorio)
+        .join(Accesorio, StockAccesorio.accesorio_id == Accesorio.accesorio_id)  # type: ignore
+        .where(Accesorio.activo == True)  # type: ignore
+    ).all()
+
+    for stock in stocks:
+        cantidad_anterior = stock.cantidad
+        stock.cantidad = cantidad_anterior + cantidad if sumar else cantidad
+        diferencia = stock.cantidad - cantidad_anterior
+
+        if diferencia != 0:
+            session.add(MovimientoStock(
+                accesorio_id=stock.accesorio_id,
+                local_id=stock.local_id,
+                tipo_movimiento=TipoMovimiento.AJUSTE,
+                cantidad=diferencia,
+                motivo=f"Seed stock ({'suma' if sumar else 'seteo'} {cantidad})",
+                usuario_id=current_user.usuario_id,
+            ))
+
+    session.commit()
+    return {
+        "mensaje": f"Stock {'sumado' if sumar else 'seteado'} a {cantidad} en {len(stocks)} registros.",
+        "registros_actualizados": len(stocks),
+    }

@@ -90,7 +90,7 @@ def seed_accesorios(
 
         try:
             sku = generar_sku_accesorio(tipo_id=tipo.tipo_id, session=session, subtipo_id=subtipo_id)  # type: ignore
-            accesorio = Accesorio(
+            accesorio = Accesorio( #type: ignore
                 nombre=item.nombre,
                 precio=item.precio,
                 tipo_id=tipo.tipo_id,

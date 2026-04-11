@@ -263,9 +263,9 @@ def listar_ingresos_chips(
     if local_id:
         query = query.where(IngresoLoteChip.local_id == local_id)
     if fecha_desde:
-        query = query.where(IngresoLoteChip.fecha >= fecha_desde)
+        query = query.where(IngresoLoteChip.fecha >= fecha_desde) #type: ignore
     if fecha_hasta:
-        query = query.where(IngresoLoteChip.fecha <= fecha_hasta + " 23:59:59")
+        query = query.where(IngresoLoteChip.fecha <= fecha_hasta + " 23:59:59") #type: ignore
     rows = session.exec(query.offset(skip).limit(limit)).all()
     return [
         {

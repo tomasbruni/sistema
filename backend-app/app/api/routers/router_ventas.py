@@ -2,7 +2,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from sqlalchemy import exc
-from typing import Optional
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import date
 
 from app.db.session import get_session
 from app.db.models import (
@@ -13,7 +15,7 @@ from app.db.models import (
     ConfigComision, Usuario
 )
 from app.api.modelscreate import VentaCreate
-from app.api.deps import get_current_user, UsuarioActual
+from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.fechas import start_of_day
 
 router = APIRouter(
@@ -354,6 +356,197 @@ def crear_venta(
             detail=f"Error inesperado: {str(e)}"
         )
     
+
+class SeedPagoItem(BaseModel):
+    medio_de_pago: str
+    importe: int
+
+class SeedAccesorioVentaItem(BaseModel):
+    nombre: str
+    cantidad: int = 1
+    precio_unitario: int
+
+class SeedCelularVentaItem(BaseModel):
+    imei: str
+    precio_unitario: int
+
+class SeedChipVentaItem(BaseModel):
+    numero_serie: str
+    precio_unitario: int
+
+class SeedVentaItem(BaseModel):
+    fecha: date
+    pagos: List[SeedPagoItem]
+    accesorios: List[SeedAccesorioVentaItem] = []
+    celulares: List[SeedCelularVentaItem] = []
+    chips: List[SeedChipVentaItem] = []
+
+class SeedVentasRequest(BaseModel):
+    local_id: int
+    usuario_id: int
+    ventas: List[SeedVentaItem]
+
+
+@router.post("/seed")
+def seed_ventas(
+    request: SeedVentasRequest,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin)
+):
+    """
+    Carga masiva de ventas backdateadas para datos de prueba.
+    Resuelve accesorios por nombre, celulares por IMEI, chips por numero_serie.
+    Ajusta stock de accesorios automáticamente si es necesario.
+    Cada venta se procesa con savepoint: si una falla, las demás siguen.
+    """
+    config_acc  = session.exec(select(ConfigComision).where(ConfigComision.tipo_producto == "ACCESORIO")).first()
+    config_cel  = session.exec(select(ConfigComision).where(ConfigComision.tipo_producto == "CELULAR")).first()
+    config_chip = session.exec(select(ConfigComision).where(ConfigComision.tipo_producto == "CHIP")).first()
+
+    creadas = []
+    errores = []
+
+    for idx, venta_item in enumerate(request.ventas):
+        try:
+            with session.begin_nested():
+                monto_total = 0
+
+                venta = Venta(
+                    local_id=request.local_id,
+                    usuario_id=request.usuario_id,
+                    monto_total=0,
+                    tipo="VENTA",
+                    fecha_ingreso=start_of_day(venta_item.fecha),
+                )
+                session.add(venta)
+                session.flush()
+
+                # ── Pagos ────────────────────────────────────────────────────
+                for pago in venta_item.pagos:
+                    session.add(PagoVenta(
+                        venta_id=venta.venta_id,
+                        medio_de_pago=pago.medio_de_pago.upper(),
+                        importe=pago.importe,
+                        cuotas=1,
+                    ))
+
+                # ── Accesorios ───────────────────────────────────────────────
+                for item in venta_item.accesorios:
+                    accesorio = session.exec(
+                        select(Accesorio).where(Accesorio.nombre == item.nombre, Accesorio.activo == True)  # type: ignore
+                    ).first()
+                    if not accesorio:
+                        raise ValueError(f"Accesorio '{item.nombre}' no encontrado")
+
+                    stock = session.exec(
+                        select(StockAccesorio)
+                        .where(
+                            StockAccesorio.accesorio_id == accesorio.accesorio_id,
+                            StockAccesorio.local_id == request.local_id,
+                        )
+                        .with_for_update()
+                    ).first()
+                    if not stock:
+                        raise ValueError(f"Sin stock registrado para '{item.nombre}'")
+
+                    # Ajuste automático si no alcanza
+                    if stock.cantidad < item.cantidad:
+                        faltante = item.cantidad - stock.cantidad
+                        stock.cantidad += faltante
+                        session.add(MovimientoStock(
+                            accesorio_id=accesorio.accesorio_id,
+                            local_id=request.local_id,
+                            tipo_movimiento=TipoMovimiento.AJUSTE,
+                            cantidad=faltante,
+                            motivo="Ajuste automático seed ventas",
+                            usuario_id=request.usuario_id,
+                        ))
+
+                    stock.cantidad -= item.cantidad
+                    comision = _calcular_comision(config_acc, item.precio_unitario, item.cantidad)
+                    monto_total += item.precio_unitario * item.cantidad
+
+                    session.add(DetalleVentaAccesorio(
+                        venta_id=venta.venta_id,
+                        accesorio_id=accesorio.accesorio_id,
+                        precio_lista=accesorio.precio,
+                        precio_unitario=item.precio_unitario,
+                        cantidad=item.cantidad,
+                        comision_importe=comision,
+                    ))
+                    session.add(MovimientoStock(
+                        accesorio_id=accesorio.accesorio_id,
+                        local_id=request.local_id,
+                        tipo_movimiento=TipoMovimiento.VENTA,
+                        cantidad=-item.cantidad,
+                        venta_id=venta.venta_id,
+                        motivo=f"Venta #{venta.venta_id} - {accesorio.nombre}",
+                        usuario_id=request.usuario_id,
+                    ))
+
+                # ── Celulares ────────────────────────────────────────────────
+                for item in venta_item.celulares:
+                    celular = session.exec(
+                        select(Celular).where(Celular.imei == item.imei)
+                    ).first()
+                    if not celular:
+                        raise ValueError(f"Celular IMEI '{item.imei}' no encontrado")
+                    if celular.estado.upper() == "VENDIDO":
+                        raise ValueError(f"Celular IMEI '{item.imei}' ya fue vendido")
+
+                    celular.estado = "VENDIDO"
+                    comision = _calcular_comision(config_cel, item.precio_unitario)
+                    monto_total += item.precio_unitario
+
+                    session.add(DetalleVentaCelular(
+                        venta_id=venta.venta_id,
+                        celular_id=celular.celular_id,
+                        imei=celular.imei,
+                        precio_lista=celular.precio,
+                        precio_unitario=item.precio_unitario,
+                        comision_importe=comision,
+                    ))
+
+                # ── Chips ────────────────────────────────────────────────────
+                for item in venta_item.chips:
+                    chip = session.exec(
+                        select(Chip).where(Chip.numero_serie == item.numero_serie)
+                    ).first()
+                    if not chip:
+                        raise ValueError(f"Chip serie '{item.numero_serie}' no encontrado")
+                    if chip.estado.upper() == "VENDIDO":
+                        raise ValueError(f"Chip serie '{item.numero_serie}' ya fue vendido")
+
+                    chip.estado = "VENDIDO"
+                    comision = _calcular_comision(config_chip, item.precio_unitario)
+                    monto_total += item.precio_unitario
+
+                    session.add(DetalleVentaChip(
+                        venta_id=venta.venta_id,
+                        chip_id=chip.chip_id,
+                        numero_serie=chip.numero_serie,
+                        precio_lista=chip.precio,
+                        precio_unitario=item.precio_unitario,
+                        comision_importe=comision,
+                    ))
+
+                # ── Validar pagos == total ────────────────────────────────────
+                total_pagado = sum(p.importe for p in venta_item.pagos)
+                if total_pagado != monto_total:
+                    raise ValueError(
+                        f"Pagos ({total_pagado}) != total productos ({monto_total})"
+                    )
+
+                venta.monto_total = monto_total
+
+            creadas.append({"fecha": str(venta_item.fecha), "monto_total": monto_total})
+
+        except Exception as e:
+            errores.append({"venta_idx": idx, "fecha": str(venta_item.fecha), "motivo": str(e)})
+
+    session.commit()
+    return {"creadas": creadas, "errores": errores}
+
 
 @router.get("/")
 def listar_ventas(
