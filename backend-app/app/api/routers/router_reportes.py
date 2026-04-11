@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
-from sqlalchemy import func
 from typing import Optional
 from datetime import date, datetime
 from io import BytesIO
@@ -17,9 +16,7 @@ from app.db.models import (
 )
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.ventas_funciones import get_detalles_by_venta
-from zoneinfo import ZoneInfo
-
-TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
+from app.api.funciones.fechas import start_of_day, end_of_day, TZ_AR
 
 router = APIRouter(
     prefix="/reportes",
@@ -56,9 +53,9 @@ def _build_query(fecha_desde: Optional[date], fecha_hasta: Optional[date]):
         .join(Usuario, Venta.usuario_id   == Usuario.usuario_id)  # type: ignore
     )
     if fecha_desde is not None:
-        stmt = stmt.where(func.date(Venta.fecha_ingreso) >= fecha_desde)
+        stmt = stmt.where(Venta.fecha_ingreso >= start_of_day(fecha_desde))  # type: ignore
     if fecha_hasta is not None:
-        stmt = stmt.where(func.date(Venta.fecha_ingreso) <= fecha_hasta)
+        stmt = stmt.where(Venta.fecha_ingreso <= end_of_day(fecha_hasta))  # type: ignore
     return stmt.order_by(Venta.fecha_ingreso.asc(), PagoVenta.pago_id.asc())  # type: ignore
 
 

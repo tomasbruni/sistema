@@ -21,6 +21,7 @@ from .models import (
     Marca,
     Celular,
     Chip,
+    IngresoLoteChip,
 
     # Stock
     StockAccesorio,
@@ -61,6 +62,7 @@ __all__ = [
     "Marca",
     "Celular",
     "Chip",
+    "IngresoLoteChip",
     "StockAccesorio",
     "MovimientoStock",
     "TipoMovimiento",

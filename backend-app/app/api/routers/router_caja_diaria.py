@@ -23,19 +23,9 @@ from app.db.models import (
 from app.db.session import get_session
 from app.api.deps import get_current_user, UsuarioActual
 from app.api.funciones.ventas_funciones import get_detalles_by_venta, get_pagos_by_venta
+from app.api.funciones.fechas import start_of_day, end_of_day, TZ_AR
 
 router = APIRouter(prefix="/caja-diaria", tags=["Generar caja diaria"])
-TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
-
-
-# ─────────────────────────────────────────────
-# Helpers de rango (igual que en egresos)
-# ─────────────────────────────────────────────
-def _start_of_day(d: date) -> datetime:
-    return datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=TZ_AR)
- 
-def _end_of_day(d: date) -> datetime:
-    return datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=TZ_AR)
  
  
 # ─────────────────────────────────────────────
@@ -495,67 +485,96 @@ def _build_pdf(
     # ── Balance ──
     story.append(HRFlowable(width=W, thickness=1, color=colors.black, spaceAfter=4))
     story.append(Paragraph("BALANCE FINAL", seccion))
- 
-    final_ef = ef_total - total_egresos
-    final_el = el_total
- 
+
+    ef_esperado = ef_total - total_egresos   # ef ventas + ef rep - egresos
+    final_el    = el_total
+
+    # sobrante suma, faltante resta
+    ef_real     = ef_esperado + sobrante - faltante
+    total_final = ef_real + final_el
+
+    tf_style  = ParagraphStyle("tf",  parent=bold,   fontSize=10)
+    tf2_style = ParagraphStyle("tf2", parent=normal, fontSize=10)
+
     bal_data = [
-        [Paragraph("Total final efectivo",    bold),
-         Paragraph("(neto ef. − egresos)",    small),
-         Paragraph(_fmt_pesos(final_ef),      normal)],
+        [Paragraph("Total final efectivo esperado", bold),
+         Paragraph("(ef. ventas + ef. reparaciones − egresos)", small),
+         Paragraph(_fmt_pesos(ef_esperado), normal)],
         [Paragraph("Total final electrónico", bold),
-         Paragraph("(neto el.)",              small),
-         Paragraph(_fmt_pesos(final_el),      normal)],
-        [Paragraph("TOTAL FINAL",
-                   ParagraphStyle("tf",parent=bold,fontSize=10)),
-         Paragraph("", small),
-         Paragraph(_fmt_pesos(final_ef+final_el),
-                   ParagraphStyle("tf2",parent=bold,fontSize=10))],
+         Paragraph("(neto electrónico)", small),
+         Paragraph(_fmt_pesos(final_el), normal)],
     ]
-    bal_tbl = Table(bal_data, colWidths=[W*0.28, W*0.54, W*0.18])
-    bal_tbl.setStyle(TableStyle([
-        ("FONTSIZE",      (0,0),(-1,-1),9),
-        ("ALIGN",         (2,0),(2,-1),"RIGHT"),
-        ("TOPPADDING",    (0,0),(-1,-1),2),
-        ("BOTTOMPADDING", (0,0),(-1,-1),2),
-        ("LEFTPADDING",   (0,0),(-1,-1),4),
-        ("RIGHTPADDING",  (0,0),(-1,-1),4),
-        ("FONTNAME",      (0,2),(-1,2),"Helvetica-Bold"),
-        ("FONTSIZE",      (0,2),(-1,2),10),
-        ("LINEABOVE",     (0,2),(-1,2),1,colors.black),
-        ("LINEBELOW",     (0,2),(-1,2),1,colors.black),
-    ]))
+    bal_style = [
+        ("FONTSIZE",      (0,0),(-1,-1), 9),
+        ("ALIGN",         (2,0),(2,-1),  "RIGHT"),
+        ("TOPPADDING",    (0,0),(-1,-1), 2),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 2),
+        ("LEFTPADDING",   (0,0),(-1,-1), 4),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 4),
+    ]
+
+    # Sobrante / faltante solo si aplica
+    if sobrante:
+        bal_data.append([
+            Paragraph("Sobrante", bold),
+            Paragraph("(efectivo)", small),
+            Paragraph(_fmt_pesos(sobrante), normal),
+        ])
+    if faltante:
+        bal_data.append([
+            Paragraph("Faltante", bold),
+            Paragraph("(efectivo)", small),
+            Paragraph(f"− {_fmt_pesos(faltante)}", normal),
+        ])
+
+    # Total final efectivo real
+    ef_real_row = len(bal_data)
+    bal_data.append([
+        Paragraph("Total final efectivo real", bold),
+        Paragraph("(esperado ± sobrante/faltante)", small),
+        Paragraph(_fmt_pesos(ef_real), normal),
+    ])
+    bal_style += [
+        ("LINEABOVE", (0, ef_real_row), (-1, ef_real_row), 0.5, colors.black),
+    ]
+
+    # Total final
+    total_row = len(bal_data)
+    bal_data.append([
+        Paragraph("TOTAL FINAL", tf_style),
+        Paragraph("", small),
+        Paragraph(_fmt_pesos(total_final), tf_style),
+    ])
+    bal_style += [
+        ("FONTNAME",  (0, total_row), (-1, total_row), "Helvetica-Bold"),
+        ("FONTSIZE",  (0, total_row), (-1, total_row), 10),
+        ("LINEABOVE", (0, total_row), (-1, total_row), 1, colors.black),
+        ("LINEBELOW", (0, total_row), (-1, total_row), 1, colors.black),
+    ]
+
+    bal_tbl = Table(bal_data, colWidths=[W*0.32, W*0.50, W*0.18])
+    bal_tbl.setStyle(TableStyle(bal_style))
     story.append(bal_tbl)
     story.append(Spacer(1, 10))
-        
-    # Sobrante / Faltante / Firma
-    sf_sobrante = _fmt_pesos(sobrante) if sobrante else "No hay sobrantes"
-    sf_faltante = _fmt_pesos(faltante) if faltante else "No hay faltantes"
-    sf_data = [
-        [Paragraph("Sobrante:", small),
-         Paragraph("Faltante:", small),
-         Paragraph("Firma vendedora:", small)],
-        [Paragraph(sf_sobrante, bold), Paragraph(sf_faltante, bold), Paragraph("", small)],
-    ]
-    sf_table = Table(
-        sf_data,
-        colWidths=[W*0.25, W*0.25, W*0.50],
-        rowHeights=[12, 16]
+
+    # Firma vendedora
+    firma_table = Table(
+        [
+            [Paragraph("Firma y aclaración:", small)],
+            [Paragraph("", small)],
+        ],
+        colWidths=[W*0.45],
+        rowHeights=[12, 52],
     )
-    #("LINEBEFORE", (col, fila_inicio), (col, fila_fin), ...)
-    #("LINEBELOW", (col_inicio, fila), (col_fin, fila), grosor, color)
-    sf_table.setStyle(TableStyle([
-        ("VALIGN", (0,0),(-1,-1),"TOP"),
-        ("LEFTPADDING", (0,0),(-1,-1),2),
-        ("RIGHTPADDING", (0,0),(-1,-1),6),
-        ("TOPPADDING", (0,0), (-1,0), 1),
-        ("BOTTOMPADDING", (0,0), (-1,0), 1),
-        ("BOX", (0,0),(-1,-1),0.5, colors.black),
-        ("LINEBEFORE", (1,0),(1,1),0.5, colors.black),
-        ("LINEBEFORE", (2,0),(2,1),0.5, colors.black),
-        ("LINEBELOW", (0,0), (1,0), 0.5, colors.black),
+    firma_table.setStyle(TableStyle([
+        ("VALIGN",        (0,0),(-1,-1), "TOP"),
+        ("LEFTPADDING",   (0,0),(-1,-1), 4),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 4),
+        ("TOPPADDING",    (0,0),(-1,-1), 3),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 3),
+        ("BOX",           (0,0),(-1,-1), 0.5, colors.black),
     ]))
-    story.append(sf_table)
+    story.append(firma_table)
     story.append(Spacer(1, 8))
 
 
@@ -578,12 +597,12 @@ def caja_diaria_pdf(
 ):
     # --- Resolver rango ---
     if fecha:
-        dt_desde = _start_of_day(fecha)
-        dt_hasta = _end_of_day(fecha)
+        dt_desde = start_of_day(fecha)
+        dt_hasta = end_of_day(fecha)
         fecha_label = fecha.strftime("%d/%m/%Y")
     elif desde and hasta:
-        dt_desde = _start_of_day(desde)
-        dt_hasta = _end_of_day(hasta)
+        dt_desde = start_of_day(desde)
+        dt_hasta = end_of_day(hasta)
         fecha_label = f"{desde.strftime('%d/%m/%Y')} al {hasta.strftime('%d/%m/%Y')}"
     else:
         raise HTTPException(status_code=400, detail="Debe indicar 'fecha' o 'desde' + 'hasta'")

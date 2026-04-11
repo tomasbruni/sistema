@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import './AccesoriosPage.css'
 import { api, LIMIT } from '../api/api'
 import { useAlerta } from '../hooks/useAlerta'
+import SelectorLocalReceptor from '../components/chips/SelectorLocalReceptor'
+import FormularioAgregarChip from '../components/chips/FormularioAgregarChip'
+import CarritoChips from '../components/chips/CarritoChips'
 
 // ─── ESTADOS POSIBLES ────────────────────────────────────────────────────────
 const ESTADOS = ['DISPONIBLE', 'VENDIDO']
@@ -27,7 +30,8 @@ export default function ChipsPage() {
   const [loadingLista, setLoadingLista] = useState(false)
 
   const [locales, setLocales]           = useState([])
-  const [companias, setCompanias]       = useState([])   // companías únicas de los chips cargados
+  const [usuarios, setUsuarios]         = useState([])
+  const [companias, setCompanias]       = useState([])
 
   // Filtros
   const [filtroLocalId, setFiltroLocalId]   = useState(null)
@@ -43,12 +47,20 @@ export default function ChipsPage() {
   const [pagina, setPagina]   = useState(0)
   const [hayMas, setHayMas]   = useState(false)
 
+  // ── Ingreso por lote ──────────────────────────────────────────────────────
+  const [modoIngreso, setModoIngreso]       = useState(false)
+  const [loteLocalId, setLoteLocalId]       = useState(null)
+  const [loteReceptorId, setLoteReceptorId] = useState(null)
+  const [loteObs, setLoteObs]               = useState('')
+  const [carrito, setCarrito]               = useState([])
+  const [loadingLote, setLoadingLote]       = useState(false)
+  const carritoKeyRef                       = useRef(0)
+
   // ── Carga inicial ─────────────────────────────────────────────────────────
   useEffect(() => {
     fetchChips(0, null, null, null, '')
-    api.listarLocales()
-      .then(data => setLocales(data))
-      .catch(() => {})
+    api.listarLocales().then(setLocales).catch(() => {})
+    api.listarUsuarios().then(setUsuarios).catch(() => {})
   }, [])
 
   // ── Lista principal ───────────────────────────────────────────────────────
@@ -218,6 +230,68 @@ export default function ChipsPage() {
     }
   }
 
+  // ── Ingreso por lote: handlers ────────────────────────────────────────────
+  const abrirIngreso = () => {
+    setModoIngreso(true)
+    setMostrarForm(false)
+    setCarrito([])
+    setLoteLocalId(null)
+    setLoteReceptorId(null)
+    setLoteObs('')
+  }
+
+  const cancelarIngreso = () => {
+    setModoIngreso(false)
+    setCarrito([])
+  }
+
+  const handleAgregarAlCarrito = (chip) => {
+    const duplicado = carrito.some(c => c.numero_serie === chip.numero_serie)
+    if (duplicado) {
+      mostrarAlerta('error', `El N° de serie ${chip.numero_serie} ya está en el lote.`)
+      return
+    }
+    carritoKeyRef.current += 1
+    setCarrito(prev => [...prev, { ...chip, _key: carritoKeyRef.current }])
+  }
+
+  const handleEliminarDelCarrito = (key) => {
+    setCarrito(prev => prev.filter(c => c._key !== key))
+  }
+
+  const handleConfirmarLote = async () => {
+    if (!loteLocalId) { mostrarAlerta('error', 'Seleccioná un local.'); return }
+    if (carrito.length === 0) { mostrarAlerta('error', 'El lote está vacío.'); return }
+
+    setLoadingLote(true)
+    try {
+      const res = await api.ingresarLoteChips({
+        local_id:     loteLocalId,
+        receptor_id:  loteReceptorId,
+        observaciones: loteObs || null,
+        chips: carrito.map(({ compania, numero_serie, precio }) => ({ compania, numero_serie, precio })),
+      })
+
+      // Descargar remito PDF
+      const pdfRes = await api.generarIngresoChipsPdf(res.ingreso_lote_chip_id)
+      const blob   = await pdfRes.blob()
+      const url    = URL.createObjectURL(blob)
+      const a      = document.createElement('a')
+      a.href       = url
+      a.download   = `ingreso_chips_${res.ingreso_lote_chip_id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      mostrarAlerta('success', `${res.total_chips} chips ingresados. Remito descargado.`)
+      cancelarIngreso()
+      fetchChips(0)
+    } catch (err) {
+      mostrarAlerta('error', `Error: ${err.message}`)
+    } finally {
+      setLoadingLote(false)
+    }
+  }
+
   // ── Helpers de display ────────────────────────────────────────────────────
   const nombreLocal = (id) => locales.find(l => l.local_id === id)?.nombre ?? id
 
@@ -234,8 +308,14 @@ export default function ChipsPage() {
     <div className="page-container">
       <div className="page-header">
         <h2>Chips</h2>
-        {!mostrarForm && (
-          <button className="btn btn-primary" onClick={abrirCrear}>+ Nuevo chip</button>
+        {!mostrarForm && !modoIngreso && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary" onClick={abrirCrear}>+ Nuevo chip</button>
+            <button className="btn btn-secondary" onClick={abrirIngreso}>Ingresar lote</button>
+          </div>
+        )}
+        {modoIngreso && (
+          <button className="btn btn-secondary" onClick={cancelarIngreso}>Cancelar ingreso</button>
         )}
       </div>
 
@@ -244,7 +324,30 @@ export default function ChipsPage() {
         <div className={`alerta alerta-${alerta.tipo}`}>{alerta.msg}</div>
       )}
 
-      {/* ── Formulario ── */}
+      {/* ── Modo ingreso por lote ── */}
+      {modoIngreso && (
+        <>
+          <SelectorLocalReceptor
+            localId={loteLocalId}
+            setLocalId={setLoteLocalId}
+            receptorId={loteReceptorId}
+            setReceptorId={setLoteReceptorId}
+            observaciones={loteObs}
+            setObservaciones={setLoteObs}
+            locales={locales}
+            usuarios={usuarios}
+          />
+          <FormularioAgregarChip onAgregar={handleAgregarAlCarrito} />
+          <CarritoChips
+            carrito={carrito}
+            onEliminar={handleEliminarDelCarrito}
+            onConfirmar={handleConfirmarLote}
+            loading={loadingLote}
+          />
+        </>
+      )}
+
+      {/* ── Formulario chip individual ── */}
       {mostrarForm && (
         <div className="form-card">
           <h3>{editandoId ? 'Editar chip' : 'Nuevo chip'}</h3>
@@ -320,7 +423,7 @@ export default function ChipsPage() {
       )}
 
       {/* ── Buscador y toolbar ── */}
-      {!mostrarForm && (
+      {!mostrarForm && !modoIngreso && (
         <div className="lista-toolbar">
           <input
             className="buscador"
@@ -341,7 +444,7 @@ export default function ChipsPage() {
       )}
 
       {/* ── Filtros ── */}
-      {!mostrarForm && (
+      {!mostrarForm && !modoIngreso && (
         <div className="filtros-panel">
           <span className="filtros-label">Filtrar por:</span>
 
@@ -403,52 +506,54 @@ export default function ChipsPage() {
       )}
 
       {/* ── Tabla ── */}
-      {loadingLista ? (
-        <p className="empty-msg">Cargando...</p>
-      ) : chips.length === 0 ? (
-        <p className="empty-msg">No hay chips registrados.</p>
-      ) : (
-        <>
-          <div className="table-wrapper">
-            <table className="acc-table">
-              <thead>
-                <tr>
-                  <th>N° de serie</th>
-                  <th>Compañía</th>
-                  <th>Precio</th>
-                  <th>Local</th>
-                  <th>Estado</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {chips.map(chip => (
-                  <tr key={chip.chip_id}>
-                    <td><span className="sku-badge">{chip.numero_serie}</span></td>
-                    <td>{chip.compania}</td>
-                    <td>${chip.precio.toLocaleString()}</td>
-                    <td>{nombreLocal(chip.local_id)}</td>
-                    <td>
-                      <span className={`estado-badge ${estadoClase(chip.estado)}`}>
-                        {chip.estado}
-                      </span>
-                    </td>
-                    <td className="acciones-cell">
-                      <button className="btn btn-sm btn-secondary" onClick={() => abrirEditar(chip)}>Editar</button>
-                      <button className="btn btn-sm btn-danger"    onClick={() => handleEliminar(chip)}>Eliminar</button>
-                    </td>
+      {!modoIngreso && (
+        loadingLista ? (
+          <p className="empty-msg">Cargando...</p>
+        ) : chips.length === 0 ? (
+          <p className="empty-msg">No hay chips registrados.</p>
+        ) : (
+          <>
+            <div className="table-wrapper">
+              <table className="acc-table">
+                <thead>
+                  <tr>
+                    <th>N° de serie</th>
+                    <th>Compañía</th>
+                    <th>Precio</th>
+                    <th>Local</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {chips.map(chip => (
+                    <tr key={chip.chip_id}>
+                      <td><span className="sku-badge">{chip.numero_serie}</span></td>
+                      <td>{chip.compania}</td>
+                      <td>${chip.precio.toLocaleString()}</td>
+                      <td>{nombreLocal(chip.local_id)}</td>
+                      <td>
+                        <span className={`estado-badge ${estadoClase(chip.estado)}`}>
+                          {chip.estado}
+                        </span>
+                      </td>
+                      <td className="acciones-cell">
+                        <button className="btn btn-sm btn-secondary" onClick={() => abrirEditar(chip)}>Editar</button>
+                        <button className="btn btn-sm btn-danger"    onClick={() => handleEliminar(chip)}>Eliminar</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-          <div className="paginacion">
-            <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina - 1)} disabled={pagina === 0}>← Anterior</button>
-            <span className="pagina-info">Página {pagina + 1}</span>
-            <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina + 1)} disabled={!hayMas}>Siguiente →</button>
-          </div>
-        </>
+            <div className="paginacion">
+              <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina - 1)} disabled={pagina === 0}>← Anterior</button>
+              <span className="pagina-info">Página {pagina + 1}</span>
+              <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina + 1)} disabled={!hayMas}>Siguiente →</button>
+            </div>
+          </>
+        )
       )}
     </div>
   )

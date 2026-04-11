@@ -1,6 +1,5 @@
 from datetime import date, datetime
 from typing import Optional
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import SQLModel, Session, select
@@ -8,11 +7,10 @@ from sqlmodel import SQLModel, Session, select
 from app.db.session import get_session
 from app.db.models import MovimientoFinanciero, TipoMovimientoFinanciero
 from app.api.deps import require_admin, UsuarioActual
+from app.api.funciones.fechas import start_of_day, end_of_day
 
 
 router = APIRouter(prefix="/movimientos-financieros", tags=["Movimientos Financieros"])
-
-TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -37,15 +35,6 @@ class MovimientoFinancieroRead(SQLModel):
     fecha: Optional[datetime]
     usuario_id: int
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _start_of_day(d: date) -> datetime:
-    return datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=TZ_AR)
-
-
-def _end_of_day(d: date) -> datetime:
-    return datetime(d.year, d.month, d.day, 23, 59, 59, 999999, tzinfo=TZ_AR)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -86,14 +75,14 @@ def listar_movimientos(
 
     if fecha:
         query = query.where(
-            MovimientoFinanciero.fecha >= _start_of_day(fecha),  # type: ignore
-            MovimientoFinanciero.fecha <= _end_of_day(fecha),    # type: ignore
+            MovimientoFinanciero.fecha >= start_of_day(fecha),  # type: ignore
+            MovimientoFinanciero.fecha <= end_of_day(fecha),    # type: ignore
         )
     else:
         if fecha_desde:
-            query = query.where(MovimientoFinanciero.fecha >= _start_of_day(fecha_desde))  # type: ignore
+            query = query.where(MovimientoFinanciero.fecha >= start_of_day(fecha_desde))  # type: ignore
         if fecha_hasta:
-            query = query.where(MovimientoFinanciero.fecha <= _end_of_day(fecha_hasta))    # type: ignore
+            query = query.where(MovimientoFinanciero.fecha <= end_of_day(fecha_hasta))    # type: ignore
 
     query = query.order_by(MovimientoFinanciero.fecha.desc()).offset(offset).limit(limit)  # type: ignore
     return session.exec(query).all()

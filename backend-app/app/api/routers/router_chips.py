@@ -1,6 +1,7 @@
+import io
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, SQLModel, select
 from sqlalchemy import exc
 from typing import List, Optional
 from io import BytesIO
@@ -8,11 +9,33 @@ from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
 from app.db.session import get_session
-from app.db.models import Chip, Local, DetalleVentaChip
+from app.db.models import Chip, Local, Usuario, DetalleVentaChip, IngresoLoteChip
 from app.api.modelscreate import ChipCreate
 from app.api.modelsupdate import ChipUpdate
 from app.api.deps import get_current_user, require_admin, UsuarioActual
+from app.api.funciones.fechas import TZ_AR
+
+
+# ─── SCHEMAS INGRESO LOTE ────────────────────────────────────────────────────
+
+class ChipLoteItem(SQLModel):
+    compania: str
+    numero_serie: str
+    precio: int
+
+
+class IngresoLoteChipCreate(SQLModel):
+    local_id: int
+    receptor_id: Optional[int] = None
+    observaciones: Optional[str] = None
+    chips: List[ChipLoteItem]
 
 
 router = APIRouter(
@@ -213,3 +236,226 @@ def eliminar_chip(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error inesperado: {str(e)}"
         )
+
+
+# ─── INGRESO POR LOTE ────────────────────────────────────────────────────────
+
+@router.post("/ingresar-lote", status_code=status.HTTP_201_CREATED)
+def ingresar_lote_chips(
+    payload: IngresoLoteChipCreate,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin),
+):
+    """
+    Crea múltiples chips de una vez y los vincula a un IngresoLoteChip.
+    Devuelve el ingreso_lote_chip_id para poder descargar el remito PDF.
+    """
+    if not payload.chips:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Debe incluir al menos un chip.")
+
+    # Verificar duplicados dentro del payload
+    series = [c.numero_serie.strip() for c in payload.chips]
+    if len(series) != len(set(series)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Hay números de serie duplicados en el lote.")
+
+    # Verificar local
+    local = session.get(Local, payload.local_id)
+    if not local:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Local {payload.local_id} no encontrado.")
+
+    try:
+        lote = IngresoLoteChip(
+            local_id=payload.local_id,
+            receptor_id=payload.receptor_id,
+            usuario_id=current_user.usuario_id,
+            observaciones=payload.observaciones or None,
+        )
+        session.add(lote)
+        session.flush()  # obtener ingreso_lote_chip_id
+
+        chips_creados = []
+        for item in payload.chips:
+            # Verificar que el número de serie no exista ya en la BD
+            existente = session.exec(
+                select(Chip).where(Chip.numero_serie == item.numero_serie.strip())
+            ).first()
+            if existente:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El número de serie '{item.numero_serie}' ya existe en el sistema."
+                )
+            chip = Chip(
+                compania=item.compania.strip(),
+                numero_serie=item.numero_serie.strip(),
+                precio=item.precio,
+                local_id=payload.local_id,
+                estado="DISPONIBLE",
+                ingreso_lote_chip_id=lote.ingreso_lote_chip_id,
+            )
+            session.add(chip)
+            chips_creados.append(item)
+
+        session.commit()
+        session.refresh(lote)
+
+        return {
+            "mensaje": "Ingreso de lote de chips realizado exitosamente.",
+            "ingreso_lote_chip_id": lote.ingreso_lote_chip_id,
+            "fecha": lote.fecha,
+            "local": local.nombre,
+            "total_chips": len(chips_creados),
+        }
+
+    except HTTPException:
+        session.rollback()
+        raise
+    except exc.IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Error de integridad: algún número de serie ya existe.")
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Error inesperado: {str(e)}")
+
+
+@router.get("/ingresos/{ingreso_lote_chip_id}/pdf")
+def remito_ingreso_chips_pdf(
+    ingreso_lote_chip_id: int,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin),
+):
+    """Genera el remito PDF de un ingreso de lote de chips."""
+    lote = session.get(IngresoLoteChip, ingreso_lote_chip_id)
+    if not lote:
+        raise HTTPException(status_code=404, detail="Ingreso no encontrado.")
+
+    local    = session.get(Local,    lote.local_id)    if lote.local_id    else None
+    receptor = session.get(Usuario,  lote.receptor_id) if lote.receptor_id else None
+
+    chips = session.exec(
+        select(Chip).where(Chip.ingreso_lote_chip_id == ingreso_lote_chip_id)
+    ).all()
+
+    total_chips = len(chips)
+    fecha_str   = lote.fecha.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M") if lote.fecha else "-"
+    local_str   = local.nombre    if local    else "-"
+    receptor_str = receptor.nombre if receptor else "-"
+
+    # ── PDF ────────────────────────────────────────────────────────────────────
+    buffer = io.BytesIO()
+    W = A4[0] - 30 * mm
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        leftMargin=15*mm, rightMargin=15*mm,
+        topMargin=12*mm, bottomMargin=12*mm,
+    )
+
+    styles = getSampleStyleSheet()
+    normal = ParagraphStyle("n",  parent=styles["Normal"], fontSize=9,  leading=11)
+    bold   = ParagraphStyle("b",  parent=normal, fontName="Helvetica-Bold")
+    small  = ParagraphStyle("sm", parent=normal, fontSize=8)
+    title  = ParagraphStyle("t",  parent=styles["Normal"], fontSize=13,
+                             fontName="Helvetica-Bold", spaceAfter=6)
+    hcell  = ParagraphStyle("hc", parent=bold, fontSize=8.5)
+    cell   = ParagraphStyle("c",  parent=normal, fontSize=8.5, leading=10)
+
+    story = []
+
+    # Encabezado
+    story.append(Paragraph(f"REMITO DE INGRESO DE CHIPS  #{ingreso_lote_chip_id}", title))
+
+    meta = Table(
+        [
+            [Paragraph("<b>Fecha:</b>",    bold), Paragraph(fecha_str,    normal),
+             Paragraph("<b>Local:</b>",    bold), Paragraph(local_str,    normal)],
+            [Paragraph("<b>Receptor:</b>", bold), Paragraph(receptor_str, normal),
+             Paragraph("",                bold), Paragraph("",            normal)],
+        ],
+        colWidths=[W*0.14, W*0.36, W*0.14, W*0.36],
+    )
+    meta.setStyle(TableStyle([
+        ("FONTSIZE",      (0,0),(-1,-1), 9),
+        ("TOPPADDING",    (0,0),(-1,-1), 2),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 2),
+        ("LEFTPADDING",   (0,0),(-1,-1), 3),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 3),
+        ("BOX",           (0,0),(-1,-1), 0.5, colors.black),
+        ("LINEBELOW",     (0,0),(-1,0),  0.5, colors.black),
+        ("LINEBEFORE",    (2,0),(2,-1),  0.5, colors.black),
+    ]))
+    story.append(meta)
+    story.append(Spacer(1, 10*mm))
+
+    # Tabla de chips
+    header = [Paragraph(t, hcell) for t in ["N° de serie", "Compañía", "Precio"]]
+    data   = [header]
+    for chip in chips:
+        data.append([
+            Paragraph(chip.numero_serie, cell),
+            Paragraph(chip.compania,     cell),
+            Paragraph(f"${chip.precio:,}".replace(",", "."), cell),
+        ])
+
+    tbl = Table(data, colWidths=[W*0.45, W*0.30, W*0.25], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("FONTSIZE",      (0,0),(-1,-1), 8.5),
+        ("GRID",          (0,0),(-1,-1), 0.25, colors.black),
+        ("LINEBELOW",     (0,0),(-1,0),  0.75, colors.black),
+        ("FONTNAME",      (0,0),(-1,0),  "Helvetica-Bold"),
+        ("VALIGN",        (0,0),(-1,-1), "TOP"),
+        ("LEFTPADDING",   (0,0),(-1,-1), 3),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 3),
+        ("TOPPADDING",    (0,0),(-1,-1), 2),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 2),
+        ("ALIGN",         (2,0),(2,-1),  "RIGHT"),
+    ]))
+    story.append(tbl)
+    story.append(Spacer(1, 4*mm))
+
+    # Total
+    tot = Table(
+        [[Paragraph(f"Total chips ingresados: <b>{total_chips}</b>", small)]],
+        colWidths=[W],
+    )
+    tot.setStyle(TableStyle([
+        ("ALIGN",         (0,0),(-1,-1), "RIGHT"),
+        ("TOPPADDING",    (0,0),(-1,-1), 2),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 2),
+        ("LEFTPADDING",   (0,0),(-1,-1), 3),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 3),
+    ]))
+    story.append(tot)
+    story.append(Spacer(1, 14*mm))
+
+    # Firma
+    firma = Table(
+        [
+            [Paragraph("Firma y aclaración:", bold),
+             Paragraph("_" * 40, normal)],
+            [Paragraph("", normal), Paragraph("", small)],
+        ],
+        colWidths=[W*0.20, W*0.80],
+    )
+    firma.setStyle(TableStyle([
+        ("TOPPADDING",    (0,0),(-1,-1), 1),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 1),
+        ("LEFTPADDING",   (0,0),(-1,-1), 0),
+        ("FONTSIZE",      (0,0),(-1,-1), 9),
+    ]))
+    story.append(firma)
+
+    if lote.observaciones:
+        story.append(Spacer(1, 6*mm))
+        story.append(Paragraph(f"<b>Observaciones:</b> {lote.observaciones}", small))
+
+    doc.build(story)
+    filename = f"ingreso_chips_{ingreso_lote_chip_id}_{fecha_str.replace('/', '-').replace(' ', '_').replace(':', '')}.pdf"
+    return StreamingResponse(
+        io.BytesIO(buffer.getvalue()),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

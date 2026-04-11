@@ -2,21 +2,19 @@ from sqlmodel import SQLModel
 
 from datetime import date, datetime
 from typing import Optional
-from zoneinfo import ZoneInfo
- 
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
- 
-from app.db.session import get_session  
-from app.db.models import EgresoCaja, Usuario     
+
+from app.db.session import get_session
+from app.db.models import EgresoCaja, Usuario
 from app.api.deps import get_current_user, require_admin, UsuarioActual
+from app.api.funciones.fechas import start_of_day, end_of_day
 
 
 router = APIRouter(prefix="/egresos", tags=["Egresos de Caja"])
- 
-TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
- 
- 
+
+
 # ── Schemas ──────────────────────────────────────────────────────────────────
  
 class EgresoCajaCreate(SQLModel):
@@ -45,18 +43,7 @@ class EgresoCajaRead(SQLModel):
     usuario_id: int
  
  
-# ── Helpers ───────────────────────────────────────────────────────────────────
- 
-def _start_of_day(d: date) -> datetime:
-    """Medianoche al inicio del día en zona horaria argentina."""
-    return datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=TZ_AR)
- 
- 
-def _end_of_day(d: date) -> datetime:
-    """Último microsegundo del día en zona horaria argentina."""
-    return datetime(d.year, d.month, d.day, 23, 59, 59, 999999, tzinfo=TZ_AR)
- 
- 
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
  
 @router.post("/", response_model=EgresoCajaRead, status_code=status.HTTP_201_CREATED)
@@ -111,14 +98,14 @@ def listar_egresos(
         # Día exacto: convierte a rango con hora en zona AR para que el
         # TIMESTAMPTZ almacenado en Postgres se compare correctamente.
         query = query.where(
-            EgresoCaja.fecha >= _start_of_day(fecha), #type: ignore
-            EgresoCaja.fecha <= _end_of_day(fecha), #type: ignore
+            EgresoCaja.fecha >= start_of_day(fecha), #type: ignore
+            EgresoCaja.fecha <= end_of_day(fecha), #type: ignore
         )
     else:
         if fecha_desde:
-            query = query.where(EgresoCaja.fecha >= _start_of_day(fecha_desde)) #type: ignore
+            query = query.where(EgresoCaja.fecha >= start_of_day(fecha_desde)) #type: ignore
         if fecha_hasta:
-            query = query.where(EgresoCaja.fecha <= _end_of_day(fecha_hasta)) #type: ignore
+            query = query.where(EgresoCaja.fecha <= end_of_day(fecha_hasta)) #type: ignore
  
     # — Filtros simples ———————————————————————————————————————————————————————
     if local_id is not None:

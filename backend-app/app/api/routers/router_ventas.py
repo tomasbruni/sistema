@@ -14,6 +14,7 @@ from app.db.models import (
 )
 from app.api.modelscreate import VentaCreate
 from app.api.deps import get_current_user, UsuarioActual
+from app.api.funciones.fechas import start_of_day
 
 router = APIRouter(
     prefix="/ventas",
@@ -130,12 +131,7 @@ def crear_venta(
             tipo=venta_data.tipo.upper(),
         )
         if current_user.rol == 'admin' and venta_data.fecha_ingreso is not None:
-            if venta_data.fecha_ingreso.tzinfo is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="fecha_ingreso debe incluir zona horaria (ej: 2026-04-08T10:00:00-03:00)."
-                )
-            venta_kwargs["fecha_ingreso"] = venta_data.fecha_ingreso
+            venta_kwargs["fecha_ingreso"] = start_of_day(venta_data.fecha_ingreso)
         venta = Venta(**venta_kwargs)
         session.add(venta)
         session.flush()  # obtener venta_id

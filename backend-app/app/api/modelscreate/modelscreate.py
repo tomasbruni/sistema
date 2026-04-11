@@ -233,7 +233,7 @@ class VentaCreate(SQLModel):
     local_id: int = Field(..., gt=0)
     usuario_id: Optional[int] = None
     tipo: str  # VENTA | DEVOLUCION
-    fecha_ingreso: Optional[datetime] = None  # solo admin puede sobreescribir
+    fecha_ingreso: Optional[date] = None  # solo admin puede sobreescribir
 
     pagos: List[PagoVentaCreate] = Field(..., min_length=1)
  

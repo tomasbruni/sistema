@@ -10,9 +10,10 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
 from app.db.session import get_session
-from app.db.models import MovimientoStock, Accesorio, Local, TipoMovimiento 
+from app.db.models import MovimientoStock, Accesorio, Local, TipoMovimiento
 
 from app.api.deps import get_current_user, require_admin
+from app.api.funciones.fechas import start_of_day, end_of_day
 
 router = APIRouter(
     prefix="/movimientos",
@@ -59,9 +60,9 @@ def _build_query(
     if tipo_movimiento is not None:
         stmt = stmt.where(MovimientoStock.tipo_movimiento == tipo_movimiento)
     if fecha_desde is not None:
-        stmt = stmt.where(func.date(MovimientoStock.fecha) >= fecha_desde)
+        stmt = stmt.where(MovimientoStock.fecha >= start_of_day(fecha_desde))  # type: ignore
     if fecha_hasta is not None:
-        stmt = stmt.where(func.date(MovimientoStock.fecha) <= fecha_hasta)
+        stmt = stmt.where(MovimientoStock.fecha <= end_of_day(fecha_hasta))  # type: ignore
     return stmt.order_by(MovimientoStock.fecha.desc())  # type: ignore
 
 

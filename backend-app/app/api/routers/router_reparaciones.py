@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select, SQLModel
 from sqlalchemy import exc
 from typing import Optional
-from datetime import datetime
+from datetime import date, datetime
 
 from app.db.session import get_session
 from app.db.models import *
@@ -11,6 +11,7 @@ from app.api.modelscreate import *
 from app.api.modelsupdate import *
 
 from app.api.deps import get_current_user, require_admin, UsuarioActual
+from app.api.funciones.fechas import start_of_day, end_of_day
 
 router = APIRouter(
     prefix="/reparaciones",
@@ -45,8 +46,8 @@ def listar_reparaciones(
     estado: Optional[str] = None,
     local_id: Optional[int] = None,
     dni_cliente: Optional[str] = None,
-    fecha_desde: Optional[datetime] = None,
-    fecha_hasta: Optional[datetime] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(get_current_user),
 ):
@@ -58,9 +59,9 @@ def listar_reparaciones(
     if dni_cliente is not None:
         statement = statement.where(Reparacion.dni_cliente.contains(dni_cliente))  # type: ignore
     if fecha_desde is not None:
-        statement = statement.where(Reparacion.fecha_ingreso >= fecha_desde)  # type: ignore
+        statement = statement.where(Reparacion.fecha_ingreso >= start_of_day(fecha_desde))  # type: ignore
     if fecha_hasta is not None:
-        statement = statement.where(Reparacion.fecha_ingreso <= fecha_hasta)  # type: ignore
+        statement = statement.where(Reparacion.fecha_ingreso <= end_of_day(fecha_hasta))  # type: ignore
     return session.exec(statement).all()
 
 

@@ -116,6 +116,19 @@ class Celular(SQLModel, table=True):
     estado: str
 
 
+class IngresoLoteChip(SQLModel, table=True):
+    __tablename__ = "ingresos_lote_chips" #type: ignore
+
+    ingreso_lote_chip_id: Optional[int] = Field(default=None, primary_key=True)
+    fecha: Optional[datetime] = Field(default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+    usuario_id: Optional[int] = Field(default=None, foreign_key="usuarios.usuario_id")
+    receptor_id: Optional[int] = Field(default=None, foreign_key="usuarios.usuario_id")
+    local_id: Optional[int] = Field(default=None, foreign_key="locales.local_id")
+    observaciones: Optional[str] = None
+
+
 class Chip(SQLModel, table=True):
     __tablename__ = "chips" #type: ignore
 
@@ -125,6 +138,7 @@ class Chip(SQLModel, table=True):
     precio: int
     local_id: int = Field(foreign_key="locales.local_id")
     estado: str
+    ingreso_lote_chip_id: Optional[int] = Field(default=None, foreign_key="ingresos_lote_chips.ingreso_lote_chip_id")
 
 
 # =====================

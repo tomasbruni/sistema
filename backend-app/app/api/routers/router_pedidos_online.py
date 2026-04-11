@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from sqlalchemy import exc
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from app.db.session import get_session
@@ -15,6 +15,7 @@ from app.db.models import (
 from app.api.modelscreate import PedidoOnlineCreate
 from app.api.modelsupdate import PedidoOnlineAdminNota, PedidoOnlineAprobarBody
 from app.api.deps import get_current_user, require_admin, UsuarioActual
+from app.api.funciones.fechas import start_of_day, end_of_day
 
 router = APIRouter(
     prefix="/pedidos-online",
@@ -196,8 +197,8 @@ def listar_pedidos(
     limit: int = 20,
     estado: Optional[str] = None,
     local_retiro_id: Optional[int] = None,
-    fecha_desde: Optional[datetime] = None,
-    fecha_hasta: Optional[datetime] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(get_current_user),
 ):
@@ -208,9 +209,9 @@ def listar_pedidos(
     if local_retiro_id:
         query = query.where(PedidoOnline.local_retiro_id == local_retiro_id)
     if fecha_desde:
-        query = query.where(PedidoOnline.fecha_creacion >= fecha_desde) #type: ignore
+        query = query.where(PedidoOnline.fecha_creacion >= start_of_day(fecha_desde)) #type: ignore
     if fecha_hasta:
-        query = query.where(PedidoOnline.fecha_creacion <= fecha_hasta) #type: ignore
+        query = query.where(PedidoOnline.fecha_creacion <= end_of_day(fecha_hasta)) #type: ignore
 
     query = query.order_by(PedidoOnline.fecha_creacion.desc()).offset(skip).limit(limit)  # type: ignore
     return session.exec(query).all()

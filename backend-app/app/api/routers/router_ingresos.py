@@ -4,6 +4,7 @@ from sqlmodel import Session, SQLModel, select, col, Field
 from sqlalchemy import exc
 from sqlalchemy.orm import aliased
 from datetime import datetime, date
+from app.api.funciones.fechas import start_of_day, end_of_day, TZ_AR
 from pathlib import Path
 import io
 
@@ -52,8 +53,8 @@ class IngresoLoteDetalleResponse(SQLModel):
 def listar_ingresos(
     skip: int = 0,
     limit: int = 20,
-    fecha_desde: Optional[datetime] = None,
-    fecha_hasta: Optional[datetime] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
     local_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
@@ -69,9 +70,9 @@ def listar_ingresos(
     )
 
     if fecha_desde:
-        stmt = stmt.where(IngresoLote.fecha >= fecha_desde)# type: ignore
+        stmt = stmt.where(IngresoLote.fecha >= start_of_day(fecha_desde))# type: ignore
     if fecha_hasta:
-        stmt = stmt.where(IngresoLote.fecha <= fecha_hasta)# type: ignore
+        stmt = stmt.where(IngresoLote.fecha <= end_of_day(fecha_hasta))# type: ignore
     
     if local_id:
         stmt = stmt.where(IngresoLote.local_id == local_id)# type: ignore
@@ -189,7 +190,7 @@ def ingreso_pdf(
     cell    = ParagraphStyle("c",  parent=normal, fontSize=8.5, leading=10)
 
     fecha_str = (
-        ingreso.fecha.strftime("%d/%m/%Y %H:%M")
+        ingreso.fecha.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M")
         if ingreso.fecha else "-"
     )
     local_str    = local.nombre    if local    else "-"

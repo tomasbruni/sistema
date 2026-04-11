@@ -445,7 +445,7 @@ export default function VentasPage() {
         .filter(p => p.tipo === 'chip')
         .map(p => ({ chip_id: p.id, numero_serie: p.numero_serie, precio_unitario: p.precio_unitario })),
       ...(rol === 'admin' && { usuario_id: usuarioId }), // si es admin el usuario es seleccionado
-      ...(rol === 'admin' && { fecha_ingreso: `${fechaVenta}T00:00:00-03:00` }),
+      ...(rol === 'admin' && { fecha_ingreso: fechaVenta }),
     }
 
     setLoadingConfirmar(true)

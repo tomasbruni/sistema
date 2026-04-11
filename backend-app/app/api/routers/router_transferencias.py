@@ -1,5 +1,5 @@
 import io
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +19,7 @@ LOGO_PATH = str(Path(__file__).resolve().parent.parent.parent.parent / "static" 
 from app.db.models import Accesorio, Local, MovimientoStock, Transferencia, TipoMovimiento, Usuario
 from app.db.session import get_session
 from app.api.deps import get_current_user, UsuarioActual
+from app.api.funciones.fechas import start_of_day, end_of_day
 
 
 router = APIRouter(prefix="/transferencias", tags=["Transferencias"])
@@ -68,8 +69,8 @@ def _get_items(transferencia_id: int, session: Session) -> list[ItemTransferenci
 def listar_transferencias(
     skip: int = 0,
     limit: int = 20,
-    fecha_desde: Optional[datetime] = None,
-    fecha_hasta: Optional[datetime] = None,
+    fecha_desde: Optional[date] = None,
+    fecha_hasta: Optional[date] = None,
     local_origen_id: Optional[int] = None,
     local_destino_id: Optional[int] = None,
     usuario_id: Optional[int] = None,
@@ -101,9 +102,9 @@ def listar_transferencias(
     )
 
     if fecha_desde:
-        stmt = stmt.where(Transferencia.fecha >= fecha_desde)   # type: ignore
+        stmt = stmt.where(Transferencia.fecha >= start_of_day(fecha_desde))   # type: ignore
     if fecha_hasta:
-        stmt = stmt.where(Transferencia.fecha <= fecha_hasta)   # type: ignore
+        stmt = stmt.where(Transferencia.fecha <= end_of_day(fecha_hasta))   # type: ignore
     if local_origen_id:
         stmt = stmt.where(Transferencia.local_origen_id == local_origen_id)  # type: ignore
     if local_destino_id:

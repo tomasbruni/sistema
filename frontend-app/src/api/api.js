@@ -399,6 +399,16 @@ export const api = {
   eliminarChip: (id) =>
     authFetch(`${BASE_URL}/chips/${id}`, { method: 'DELETE' }).then(handleResponse),
 
+  ingresarLoteChips: (body) =>
+    authFetch(`${BASE_URL}/chips/ingresar-lote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  generarIngresoChipsPdf: (ingreso_lote_chip_id) =>
+    authFetch(`${BASE_URL}/chips/ingresos/${ingreso_lote_chip_id}/pdf`),
+
   // CELULARES
   crearCelular: (body) =>
     authFetch(`${BASE_URL}/celulares/`, {
