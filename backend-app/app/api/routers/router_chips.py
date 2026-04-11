@@ -25,6 +25,9 @@ from app.api.funciones.fechas import TZ_AR
 
 # ─── SCHEMAS INGRESO LOTE ────────────────────────────────────────────────────
 
+COMPANIAS_VALIDAS = {"CLARO", "PERSONAL", "MOVISTAR", "TUENTI"}
+
+
 class ChipLoteItem(SQLModel):
     compania: str
     numero_serie: str
@@ -240,6 +243,70 @@ def eliminar_chip(
 
 # ─── INGRESO POR LOTE ────────────────────────────────────────────────────────
 
+@router.get("/ingresos/")
+def listar_ingresos_chips(
+    session: Session = Depends(get_session),
+    local_id: Optional[int] = None,
+    fecha_desde: Optional[str] = None,
+    fecha_hasta: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 20,
+    current_user: UsuarioActual = Depends(require_admin),
+):
+    """Lista los ingresos de lotes de chips con filtros opcionales."""
+    query = (
+        select(IngresoLoteChip, Local, Usuario)
+        .join(Local, IngresoLoteChip.local_id == Local.local_id, isouter=True)  # type: ignore
+        .join(Usuario, IngresoLoteChip.receptor_id == Usuario.usuario_id, isouter=True)  # type: ignore
+        .order_by(IngresoLoteChip.ingreso_lote_chip_id.desc())  # type: ignore
+    )
+    if local_id:
+        query = query.where(IngresoLoteChip.local_id == local_id)
+    if fecha_desde:
+        query = query.where(IngresoLoteChip.fecha >= fecha_desde)
+    if fecha_hasta:
+        query = query.where(IngresoLoteChip.fecha <= fecha_hasta + " 23:59:59")
+    rows = session.exec(query.offset(skip).limit(limit)).all()
+    return [
+        {
+            "ingreso_lote_chip_id": lote.ingreso_lote_chip_id,
+            "fecha": lote.fecha,
+            "local": local.nombre if local else None,
+            "nombre_receptor": receptor.nombre if receptor else None,
+            "observaciones": lote.observaciones,
+        }
+        for lote, local, receptor in rows
+    ]
+
+
+@router.get("/ingresos/{ingreso_lote_chip_id}")
+def detalle_ingreso_chips(
+    ingreso_lote_chip_id: int,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin),
+):
+    """Devuelve el detalle de un ingreso de lote de chips con los chips incluidos."""
+    lote = session.get(IngresoLoteChip, ingreso_lote_chip_id)
+    if not lote:
+        raise HTTPException(status_code=404, detail="Ingreso no encontrado.")
+    local    = session.get(Local,    lote.local_id)    if lote.local_id    else None
+    receptor = session.get(Usuario,  lote.receptor_id) if lote.receptor_id else None
+    chips = session.exec(
+        select(Chip).where(Chip.ingreso_lote_chip_id == ingreso_lote_chip_id)
+    ).all()
+    return {
+        "ingreso_lote_chip_id": lote.ingreso_lote_chip_id,
+        "fecha": lote.fecha,
+        "local": local.nombre if local else None,
+        "nombre_receptor": receptor.nombre if receptor else None,
+        "observaciones": lote.observaciones,
+        "chips": [
+            {"numero_serie": c.numero_serie, "compania": c.compania, "precio": c.precio}
+            for c in chips
+        ],
+    }
+
+
 @router.post("/ingresar-lote", status_code=status.HTTP_201_CREATED)
 def ingresar_lote_chips(
     payload: IngresoLoteChipCreate,
@@ -253,6 +320,11 @@ def ingresar_lote_chips(
     if not payload.chips:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Debe incluir al menos un chip.")
+
+    companias_invalidas = [c.compania for c in payload.chips if c.compania.upper() not in COMPANIAS_VALIDAS]
+    if companias_invalidas:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Compañía inválida: {', '.join(set(companias_invalidas))}. Valores permitidos: {', '.join(sorted(COMPANIAS_VALIDAS))}.")
 
     # Verificar duplicados dentro del payload
     series = [c.numero_serie.strip() for c in payload.chips]

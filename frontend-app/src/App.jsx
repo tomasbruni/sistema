@@ -11,6 +11,7 @@ import CelularesPage from './pages/CelularesPage'
 import ChipsPage from './pages/ChipsPage'
 import ReportesPage from './pages/ReportesPage'
 import IngresosPage from './pages/IngresosPage'
+import IngresosChipsPage from './pages/IngresosChipsPage'
 import TransferenciasPage from './pages/TransferenciasPage'
 import PedidosOnlinePage from './pages/PedidosOnlinePage'
 import MovimientosFinancierosPage from './pages/MovimientosFinancierosPage'
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="stock"         element={<StockPage />} />
           <Route path="transferencias" element={<TransferenciasPage />} />
           <Route path="ingresos"  element={<RutaAdmin><IngresosPage /></RutaAdmin>} />
+          <Route path="ingresos-chips" element={<RutaAdmin><IngresosChipsPage /></RutaAdmin>} />
           <Route path="accesorios"  element={<RutaAdmin><AccesoriosPage /></RutaAdmin>} />
           <Route path="adicionales" element={<RutaAdmin><AdicionalesPage /></RutaAdmin>} />
           <Route path="movimientos" element={<RutaAdmin><MovimientosPage /></RutaAdmin>} />

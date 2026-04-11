@@ -18,7 +18,7 @@ export default function FormularioAgregarChip({ onAgregar }) {
       numero_serie: form.numero_serie.trim(),
       precio:       Number(form.precio),
     })
-    setForm(formVacio)
+    setForm(prev => ({ ...formVacio, compania: prev.compania, precio: prev.precio }))
   }
 
   return (
@@ -29,13 +29,18 @@ export default function FormularioAgregarChip({ onAgregar }) {
 
           <div className="form-group">
             <label>Compañía *</label>
-            <input
+            <select
               name="compania"
               value={form.compania}
               onChange={handleChange}
-              placeholder="Ej: Claro, Personal, Movistar"
               required
-            />
+            >
+              <option value="">Seleccionar</option>
+              <option value="CLARO">Claro</option>
+              <option value="PERSONAL">Personal</option>
+              <option value="MOVISTAR">Movistar</option>
+              <option value="TUENTI">Tuenti</option>
+            </select>
           </div>
 
           <div className="form-group">

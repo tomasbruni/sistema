@@ -16,6 +16,7 @@ export default function Navbar() {
           <>
             <NavDropdown label="Mov. de stock" items={[
               { to: "/ingresos", label: "Ingresos" },
+              { to: "/ingresos-chips", label: "Ingresos chips" },
               { to: "/transferencias", label: "Transferencias" },
               { to: "/movimientos", label: "Movimientos" },
             ]} />

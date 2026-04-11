@@ -406,8 +406,18 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handleResponse),
 
+  listarIngresosChips: ({ skip = 0, limit = 20, fecha_desde = null, fecha_hasta = null, local_id = null } = {}) =>
+    authFetch(`${BASE_URL}/chips/ingresos/?${buildParams({ skip, limit, fecha_desde, fecha_hasta, local_id })}`).then(handleResponse),
+
+  getDetalleIngresoChips: (ingreso_lote_chip_id) =>
+    authFetch(`${BASE_URL}/chips/ingresos/${ingreso_lote_chip_id}`).then(handleResponse),
+
   generarIngresoChipsPdf: (ingreso_lote_chip_id) =>
-    authFetch(`${BASE_URL}/chips/ingresos/${ingreso_lote_chip_id}/pdf`),
+    authFetch(`${BASE_URL}/chips/ingresos/${ingreso_lote_chip_id}/pdf`)
+      .then(res => {
+        if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) })
+        return res.blob()
+      }),
 
   // CELULARES
   crearCelular: (body) =>

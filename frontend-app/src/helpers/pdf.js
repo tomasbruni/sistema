@@ -18,6 +18,15 @@ export const descargarIngresoPdf = async (ingreso_lote_id, onError) => {
   }
 }
 
+export const descargarIngresoChipsPdf = async (ingreso_lote_chip_id, onError) => {
+  try {
+    const blob = await api.generarIngresoChipsPdf(ingreso_lote_chip_id)
+    await _descargar(blob, `ingreso_chips_${ingreso_lote_chip_id}.pdf`)
+  } catch (err) {
+    onError?.(`Error al generar PDF: ${err.message}`)
+  }
+}
+
 export const descargarTransferenciaPdf = async (transferencia_id, onError) => {
   try {
     const blob = await api.generarTransferenciaPdf(transferencia_id)

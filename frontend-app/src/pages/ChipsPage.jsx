@@ -31,7 +31,7 @@ export default function ChipsPage() {
 
   const [locales, setLocales]           = useState([])
   const [usuarios, setUsuarios]         = useState([])
-  const [companias, setCompanias]       = useState([])
+  const COMPANIAS = ['CLARO', 'PERSONAL', 'MOVISTAR', 'TUENTI']
 
   // Filtros
   const [filtroLocalId, setFiltroLocalId]   = useState(null)
@@ -75,12 +75,7 @@ export default function ChipsPage() {
         buscar,
       })
       setHayMas(data.length > LIMIT)
-      const sliced = data.slice(0, LIMIT)
-      setChips(sliced)
-
-      // Actualizar lista de companías únicas para el filtro
-      const unicas = [...new Set(sliced.map(c => c.compania).filter(Boolean))]
-      setCompanias(prev => [...new Set([...prev, ...unicas])])
+      setChips(data.slice(0, LIMIT))
     } catch (err) {
       mostrarAlerta('error', `Error al cargar chips: ${err.message}`)
     } finally {
@@ -273,12 +268,11 @@ export default function ChipsPage() {
       })
 
       // Descargar remito PDF
-      const pdfRes = await api.generarIngresoChipsPdf(res.ingreso_lote_chip_id)
-      const blob   = await pdfRes.blob()
-      const url    = URL.createObjectURL(blob)
-      const a      = document.createElement('a')
-      a.href       = url
-      a.download   = `ingreso_chips_${res.ingreso_lote_chip_id}.pdf`
+      const blob = await api.generarIngresoChipsPdf(res.ingreso_lote_chip_id)
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `ingreso_chips_${res.ingreso_lote_chip_id}.pdf`
       a.click()
       URL.revokeObjectURL(url)
 
@@ -356,13 +350,15 @@ export default function ChipsPage() {
             <div className="form-row">
               <div className="form-group">
                 <label>Compañía *</label>
-                <input
+                <select
                   name="compania"
                   value={form.compania}
                   onChange={handleChange}
                   required
-                  placeholder="Ej: Claro, Personal, Movistar"
-                />
+                >
+                  <option value="">Seleccionar</option>
+                  {COMPANIAS.map(c => <option key={c} value={c}>{c.charAt(0) + c.slice(1).toLowerCase()}</option>)}
+                </select>
               </div>
               <div className="form-group">
                 <label>Número de serie *</label>
@@ -480,22 +476,20 @@ export default function ChipsPage() {
             </div>
           </div>
 
-          {companias.length > 0 && (
-            <div className="filtros-row">
-              <span className="filtros-sublabel">Compañía:</span>
-              <div className="filtros-chips">
-                {companias.map(c => (
-                  <button
-                    key={c}
-                    className={`filtro-chip ${filtroCompania === c ? 'filtro-chip-activo' : ''}`}
-                    onClick={() => handleFiltroCompania(c)}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
+          <div className="filtros-row">
+            <span className="filtros-sublabel">Compañía:</span>
+            <div className="filtros-chips">
+              {COMPANIAS.map(c => (
+                <button
+                  key={c}
+                  className={`filtro-chip ${filtroCompania === c ? 'filtro-chip-activo' : ''}`}
+                  onClick={() => handleFiltroCompania(c)}
+                >
+                  {c}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
 
           {(filtroLocalId || filtroEstado || filtroCompania) && (
             <button className="btn-limpiar-filtros" onClick={limpiarFiltros}>
