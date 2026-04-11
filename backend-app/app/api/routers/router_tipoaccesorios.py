@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.expression import literal
+from pydantic import BaseModel
 from typing import Optional
 
 from app.db.session import get_session, SessionDep
@@ -12,10 +13,68 @@ from app.api.modelscreate import *
 from app.api.modelsupdate import *
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 
+class SeedTiposRequest(BaseModel):
+    data: dict[str, list[str]]
+
+
 router = APIRouter(
             prefix="/tipos-accesorios", 
             tags=["tipos-accesorios"],
             )
+
+
+@router.post("/seed")
+def seed_tipos_y_subtipos(
+    request: SeedTiposRequest,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin)
+):
+    """
+    Carga masiva de tipos y subtipos a partir de un dict.
+    Ej: {"funda": ["silicona", "rígida"], "cargador": ["v8", "tipo c"]}
+    Es idempotente: si el tipo/subtipo ya existe lo omite.
+    """
+    tipos_creados = []
+    tipos_existentes = []
+    subtipos_creados = []
+    subtipos_existentes = []
+
+    for nombre_tipo, nombres_subtipos in request.data.items():
+        tipo = session.exec(
+            select(TipoAccesorio).where(TipoAccesorio.nombre == nombre_tipo)
+        ).first()
+
+        if tipo:
+            tipos_existentes.append(nombre_tipo)
+        else:
+            tipo = TipoAccesorio(nombre=nombre_tipo)
+            session.add(tipo)
+            session.flush()  # para obtener tipo_id antes del commit
+            tipos_creados.append(nombre_tipo)
+
+        for nombre_subtipo in nombres_subtipos:
+            subtipo = session.exec(
+                select(SubtipoAccesorio).where(
+                    SubtipoAccesorio.tipo_id == tipo.tipo_id,
+                    SubtipoAccesorio.nombre == nombre_subtipo
+                )
+            ).first()
+
+            if subtipo:
+                subtipos_existentes.append({"tipo": nombre_tipo, "subtipo": nombre_subtipo})
+            else:
+                subtipo = SubtipoAccesorio(nombre=nombre_subtipo, tipo_id=tipo.tipo_id)
+                session.add(subtipo)
+                subtipos_creados.append({"tipo": nombre_tipo, "subtipo": nombre_subtipo})
+
+    session.commit()
+
+    return {
+        "tipos_creados": tipos_creados,
+        "tipos_existentes": tipos_existentes,
+        "subtipos_creados": subtipos_creados,
+        "subtipos_existentes": subtipos_existentes,
+    }
 
 
 @router.post("/", response_model=TipoAccesorio)

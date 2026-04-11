@@ -37,14 +37,7 @@ def generar_sku_accesorio(
         raise ValueError(f"Tipo {tipo_id} no existe")
 
     tipo_code = normalizar_texto(tipo.nombre, 3)
-
-    spec = "GEN"
-    if subtipo_id:
-        subtipo = session.get(SubtipoAccesorio, subtipo_id)
-        if subtipo:
-            spec = normalizar_texto(subtipo.nombre, 3)
-
-    prefijo = f"{tipo_code}-{spec}"
+    prefijo = tipo_code
 
     ultimo_sku = session.exec(
         select(Accesorio.sku)

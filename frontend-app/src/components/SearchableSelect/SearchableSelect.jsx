@@ -43,11 +43,13 @@ export default function SearchableSelect({ options, value, onChange, onSearch, p
   
   // Cuando cambia el value desde afuera (ej: abrir edición), sincronizar el label
   // osea cuando selecciono tambien,
+  // No sincronizar mientras el dropdown está abierto (usuario escribiendo)
   useEffect(() => {
+    //if (abierto) return
     if (value == null || value === '') {
       setInputVal('')
       return
-    } // si no es null, busco el label
+    }
     const encontrada = options.find(o => String(o.value) === String(value))
     if (encontrada) setInputVal(encontrada.label)
   }, [value])

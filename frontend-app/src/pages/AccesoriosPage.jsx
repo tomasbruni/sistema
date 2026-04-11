@@ -5,6 +5,7 @@ import { api } from '../api/api'
 import { useAlerta } from '../hooks/useAlerta'
 import useSelectOptions from '../hooks/useSelectOptions'
 import useListaFiltrada from '../hooks/useListaFiltrada'
+import ModalCrearTipoSubtipo from '../components/accesorios/ModalCrearTipoSubtipo'
 
 const formVacio = {
   nombre: '',
@@ -28,7 +29,7 @@ export default function AccesoriosPage() {
     handleFiltroTipo, handleFiltroSubtipo, handleFiltroActivo,
     tiposFiltro, subtiposFiltro,
     limpiarFiltros, hayFiltrosActivos,
-    refetch,
+    refetch, refetchTipos, refetchSubtipos,
     nombreTipo, nombreSubtipo,
   } = useListaFiltrada((p) => api.listarAccesorios(p), { conCatalogos: true })
 
@@ -37,9 +38,27 @@ export default function AccesoriosPage() {
   const [editandoId, setEditandoId]       = useState(null)
   const [mostrarForm, setMostrarForm]     = useState(false)
   const [loading, setLoading]             = useState(false)
+  const [modalNuevo, setModalNuevo]       = useState(null) // 'tipo' | 'subtipo' | null
 
   const { options, setOption, buscadorSelect } =
     useSelectOptions(['tipos', 'subtipos', 'marcas', 'marcasCelulares', 'modelos'])
+
+  // ── Crear tipo/subtipo desde el form ─────────────────────────────────────
+  const handleCrearTipoSubtipo = async (body) => {
+    if (modalNuevo === 'tipo') {
+      const nuevo = await api.crearTipo(body)
+      await buscadorSelect('tipos', '')
+      setFormField('tipo_id')(nuevo.tipo_id)
+      setFormField('subtipo_id')(null)
+      setOption('subtipos', [])
+      refetchTipos()
+    } else {
+      const nuevo = await api.crearSubtipo(body)
+      await buscadorSelect('subtipos', '', { tipo_id: form.tipo_id })
+      setFormField('subtipo_id')(nuevo.subtipo_id)
+      refetchSubtipos()
+    }
+  }
 
   // ── Exportar ─────────────────────────────────────────────────────────────
   const handleExportar = async () => {
@@ -228,29 +247,39 @@ export default function AccesoriosPage() {
             <div className="form-row">
               <div className="form-group">
                 <label>Tipo *</label>
-                <SearchableSelect
-                  options={options.tipos}
-                  value={form.tipo_id}
-                  onChange={(val) => {
-                    setFormField('tipo_id')(val)
-                    setFormField('subtipo_id')(null)
-                    setOption('subtipos', [])
-                    if (val) buscadorSelect('subtipos', '', { tipo_id: val })
-                  }}
-                  onSearch={(t) => buscadorSelect('tipos', t)}
-                  placeholder="Buscar tipo..."
-                />
+                <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <SearchableSelect
+                      options={options.tipos}
+                      value={form.tipo_id}
+                      onChange={(val) => {
+                        setFormField('tipo_id')(val)
+                        setFormField('subtipo_id')(null)
+                        setOption('subtipos', [])
+                        if (val) buscadorSelect('subtipos', '', { tipo_id: val })
+                      }}
+                      onSearch={(t) => buscadorSelect('tipos', t)}
+                      placeholder="Buscar tipo..."
+                    />
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" title="Agregar tipo" onClick={() => setModalNuevo('tipo')}>+</button>
+                </div>
               </div>
               <div className="form-group">
                 <label>Subtipo</label>
-                <SearchableSelect
-                  options={options.subtipos}
-                  value={form.subtipo_id}
-                  onChange={setFormField('subtipo_id')}
-                  onSearch={(t) => buscadorSelect('subtipos', t, { tipo_id: form.tipo_id })}
-                  placeholder="Buscar subtipo..."
-                  disabled={!form.tipo_id}
-                />
+                <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <SearchableSelect
+                      options={options.subtipos}
+                      value={form.subtipo_id}
+                      onChange={setFormField('subtipo_id')}
+                      onSearch={(t) => buscadorSelect('subtipos', t, { tipo_id: form.tipo_id })}
+                      placeholder="Buscar subtipo..."
+                      disabled={!form.tipo_id}
+                    />
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" title="Agregar subtipo" onClick={() => setModalNuevo('subtipo')} disabled={!form.tipo_id}>+</button>
+                </div>
               </div>
             </div>
 
@@ -443,6 +472,15 @@ export default function AccesoriosPage() {
             <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina + 1)} disabled={!hayMas}>Siguiente →</button>
           </div>
         </>
+      )}
+      {modalNuevo && (
+        <ModalCrearTipoSubtipo
+          modo={modalNuevo}
+          tipoId={form.tipo_id}
+          tipoNombre={options.tipos.find(t => t.value === form.tipo_id)?.label}
+          onConfirm={handleCrearTipoSubtipo}
+          onClose={() => setModalNuevo(null)}
+        />
       )}
     </div>
   )

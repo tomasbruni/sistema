@@ -34,9 +34,8 @@ export default function useListaFiltrada(fetchFn, { conLocales = false, conCatal
   const [locales, setLocales]               = useState([])
 
   // ── Catálogos para resolver IDs en tabla (solo si conCatalogos = true) ─────
-  const [tipos, setTipos]   = useState([])
   const [subtipos, setSubtipos] = useState([])
-  const [usuarios, setUsuarios] = useState ([])
+  const [usuarios, setUsuarios] = useState([])
 
   // ── Carga inicial ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -51,9 +50,6 @@ export default function useListaFiltrada(fetchFn, { conLocales = false, conCatal
         .catch(() => {})
     }
     if (conCatalogos) {
-      api.listarTipos({ buscar: '' })
-        .then(data => setTipos(data.map(m => ({ value: m.tipo_id, label: m.nombre }))))
-        .catch(() => {})
       api.listarSubtipos({ buscar: '' })
         .then(data => setSubtipos(data.map(m => ({ value: m.subtipo_id, label: m.nombre }))))
         .catch(() => {})
@@ -67,7 +63,7 @@ export default function useListaFiltrada(fetchFn, { conLocales = false, conCatal
   // porque lo uso una vez en el render y luego no se vuelve a correr el useEFfect
   // entonces dentro del use effect nunca se va a usar una referencia vieja porque no se vuelve a usar directamente
   // ── Helpers para resolver IDs a nombres en la tabla ───────────────────────
-  const nombreTipo  = (id) => tipos.find(m => m.value === id)?.label  ?? `ID ${id}`
+  const nombreTipo  = (id) => tiposFiltro.find(m => m.value === id)?.label  ?? `ID ${id}`
   const nombreSubtipo = (id) => subtipos.find(m => m.value === id)?.label ?? `ID ${id}`
 
   // ── Fetch interno ──────────────────────────────────────────────────────────
@@ -166,6 +162,16 @@ export default function useListaFiltrada(fetchFn, { conLocales = false, conCatal
   const refetch = () =>
     _fetch(busqueda, pagina, filtroTipoId, filtroSubtipoId, filtroLocalId, filtroActivo)
 
+  const refetchTipos = () =>
+    api.listarTipos({ buscar: '' })
+      .then(data => setTiposFiltro(data.map(t => ({ value: t.tipo_id, label: t.nombre }))))
+      .catch(() => {})
+
+  const refetchSubtipos = () =>
+    api.listarSubtipos({ buscar: '' })
+      .then(data => setSubtipos(data.map(s => ({ value: s.subtipo_id, label: s.nombre }))))
+      .catch(() => {})
+
   const hayFiltrosActivos = !!(filtroTipoId || filtroSubtipoId || filtroLocalId || filtroActivo !== true)
 
   return {
@@ -184,6 +190,6 @@ export default function useListaFiltrada(fetchFn, { conLocales = false, conCatal
     // Catálogos y helpers (solo si conCatalogos = true)
     nombreTipo, nombreSubtipo,
     // Utilidades
-    limpiarFiltros, hayFiltrosActivos, refetch,
+    limpiarFiltros, hayFiltrosActivos, refetch, refetchTipos, refetchSubtipos,
   }
 }
