@@ -173,6 +173,8 @@ class ReparacionCreate(SQLModel):
     total: int
     adelanto: int
     local_id: int
+    fecha_ingreso: Optional[date] = None
+    usuario_id: Optional[int] = None
 
 # =====================
 # SOBRANTES / FALTANTES

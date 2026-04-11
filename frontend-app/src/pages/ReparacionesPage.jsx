@@ -19,6 +19,8 @@ const formCrearVacio = {
   total:            '',
   adelanto:         '',
   local_id:         '',
+  fecha_ingreso:    '',
+  usuario_id:       '',
 }
 
 const formEditarVacio = {
@@ -41,12 +43,13 @@ export default function ReparacionesPage() {
   const [usuarios, setUsuarios]           = useState([])
 
   // Filtros
-  const [filtroLocalId, setFiltroLocalId] = useState(null)
-  const [filtroEstado, setFiltroEstado]   = useState(null)
-  const [fechaDesde, setFechaDesde]       = useState('')
-  const [fechaHasta, setFechaHasta]       = useState('')
-  const [busqueda, setBusqueda]           = useState('')
-  const debounceRef                       = useRef(null)
+  const [filtroLocalId, setFiltroLocalId]   = useState(null)
+  const [filtroEstado, setFiltroEstado]     = useState(null)
+  const [filtroUsuarioId, setFiltroUsuarioId] = useState(null)
+  const [fechaDesde, setFechaDesde]         = useState('')
+  const [fechaHasta, setFechaHasta]         = useState('')
+  const [busqueda, setBusqueda]             = useState('')
+  const debounceRef                         = useRef(null)
 
   // Formulario crear
   const [mostrarCrear, setMostrarCrear]   = useState(false)
@@ -62,12 +65,16 @@ export default function ReparacionesPage() {
   const [montoRepId, setMontoRepId]       = useState(null)
   const [montoAgregar, setMontoAgregar]   = useState('')
   const [montoObs, setMontoObs]           = useState('')
+  const [montoFecha, setMontoFecha]       = useState('')
+  const [montoUsuarioId, setMontoUsuarioId] = useState('')
   const [loadingMonto, setLoadingMonto]   = useState(false)
 
   // Modal transición (entregar / garantia / entregar-garantia)
   const [transRepId, setTransRepId]       = useState(null)
   const [transAccion, setTransAccion]     = useState(null) // 'entregar'|'garantia'|'entregar-garantia'
   const [transObs, setTransObs]           = useState('')
+  const [transFecha, setTransFecha]       = useState('')
+  const [transUsuarioId, setTransUsuarioId] = useState('')
   const [loadingTrans, setLoadingTrans]   = useState(false)
 
   // Historial
@@ -84,16 +91,18 @@ export default function ReparacionesPage() {
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
   const fetchReparaciones = async (
-    localId = filtroLocalId,
-    estado  = filtroEstado,
-    dni     = busqueda,
-    desde   = fechaDesde,
-    hasta   = fechaHasta,
+    localId   = filtroLocalId,
+    estado    = filtroEstado,
+    usuarioId = filtroUsuarioId,
+    dni       = busqueda,
+    desde     = fechaDesde,
+    hasta     = fechaHasta,
   ) => {
     setLoadingLista(true)
     try {
       const data = await api.listarReparaciones({
         local_id: localId, estado,
+        usuario_id: usuarioId,
         dni_cliente: dni || null,
         fecha_desde: desde || null,
         fecha_hasta: hasta || null,
@@ -113,37 +122,43 @@ export default function ReparacionesPage() {
     setBusqueda(val)
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() =>
-      fetchReparaciones(filtroLocalId, filtroEstado, val, fechaDesde, fechaHasta), 400)
+      fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, val, fechaDesde, fechaHasta), 400)
   }
 
   const handleFiltroLocal = (localId) => {
     const nuevo = filtroLocalId === localId ? null : localId
     setFiltroLocalId(nuevo)
-    fetchReparaciones(nuevo, filtroEstado, busqueda, fechaDesde, fechaHasta)
+    fetchReparaciones(nuevo, filtroEstado, filtroUsuarioId, busqueda, fechaDesde, fechaHasta)
   }
 
   const handleFiltroEstado = (estado) => {
     const nuevo = filtroEstado === estado ? null : estado
     setFiltroEstado(nuevo)
-    fetchReparaciones(filtroLocalId, nuevo, busqueda, fechaDesde, fechaHasta)
+    fetchReparaciones(filtroLocalId, nuevo, filtroUsuarioId, busqueda, fechaDesde, fechaHasta)
+  }
+
+  const handleFiltroUsuario = (usuarioId) => {
+    const nuevo = filtroUsuarioId === usuarioId ? null : usuarioId
+    setFiltroUsuarioId(nuevo)
+    fetchReparaciones(filtroLocalId, filtroEstado, nuevo, busqueda, fechaDesde, fechaHasta)
   }
 
   const handleFechaDesde = (e) => {
     const val = e.target.value
     setFechaDesde(val)
-    fetchReparaciones(filtroLocalId, filtroEstado, busqueda, val, fechaHasta)
+    fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, busqueda, val, fechaHasta)
   }
 
   const handleFechaHasta = (e) => {
     const val = e.target.value
     setFechaHasta(val)
-    fetchReparaciones(filtroLocalId, filtroEstado, busqueda, fechaDesde, val)
+    fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, busqueda, fechaDesde, val)
   }
 
   const limpiarFiltros = () => {
-    setFiltroLocalId(null); setFiltroEstado(null)
+    setFiltroLocalId(null); setFiltroEstado(null); setFiltroUsuarioId(null)
     setFechaDesde(''); setFechaHasta(''); setBusqueda('')
-    fetchReparaciones(null, null, '', '', '')
+    fetchReparaciones(null, null, null, '', '', '')
   }
 
   // ── Crear ─────────────────────────────────────────────────────────────────
@@ -162,6 +177,8 @@ export default function ReparacionesPage() {
         total:            Number(formCrear.total),
         adelanto:         Number(formCrear.adelanto),
         local_id:         Number(formCrear.local_id),
+        ...(esAdmin && formCrear.fecha_ingreso ? { fecha_ingreso: formCrear.fecha_ingreso } : {}),
+        ...(esAdmin && formCrear.usuario_id    ? { usuario_id: Number(formCrear.usuario_id) } : {}),
       })
       mostrarAlerta('success', 'Reparación creada correctamente.')
       setMostrarCrear(false)
@@ -177,6 +194,7 @@ export default function ReparacionesPage() {
   // ── Editar ────────────────────────────────────────────────────────────────
 
   const abrirEditar = (rep) => {
+    cerrarTodo()
     setFormEditar({
       descripcion:      rep.descripcion ?? '',
       adelanto:         rep.adelanto,
@@ -222,9 +240,11 @@ export default function ReparacionesPage() {
       await api.cambiarPrecioReparacion(montoRepId, {
         monto_agregado: Number(montoAgregar),
         observaciones:  montoObs.trim() || null,
+        ...(esAdmin && montoFecha     ? { fecha: montoFecha } : {}),
+        ...(esAdmin && montoUsuarioId ? { usuario_id: Number(montoUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Monto actualizado correctamente.')
-      setMontoRepId(null); setMontoAgregar(''); setMontoObs('')
+      setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setMontoFecha(''); setMontoUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -236,15 +256,19 @@ export default function ReparacionesPage() {
   // ── Transiciones ──────────────────────────────────────────────────────────
 
   const abrirTransicion = (repId, accion) => {
+    cerrarTodo()
     setTransRepId(repId)
     setTransAccion(accion)
-    setTransObs('')
   }
 
   const handleSubmitTransicion = async (e) => {
     e.preventDefault()
     setLoadingTrans(true)
-    const body = { observaciones: transObs.trim() || null }
+    const body = {
+      observaciones: transObs.trim() || null,
+      ...(esAdmin && transFecha     ? { fecha: transFecha } : {}),
+      ...(esAdmin && transUsuarioId ? { usuario_id: Number(transUsuarioId) } : {}),
+    }
     try {
       if (transAccion === 'entregar')          await api.entregarReparacion(transRepId, body)
       else if (transAccion === 'garantia')     await api.garantiaReparacion(transRepId, body)
@@ -262,11 +286,36 @@ export default function ReparacionesPage() {
   // ── Historial ─────────────────────────────────────────────────────────────
 
   const verHistorial = (rep) => {
+    cerrarTodo()
     setHistorialRep(rep)
     abrirHistorial(rep.reparacion_id)
   }
 
+  // ── Cerrar todo ───────────────────────────────────────────────────────────
+
+  const cerrarTodo = () => {
+    setMostrarCrear(false)
+    setFormCrear(formCrearVacio)
+    setEditandoId(null)
+    setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setMontoFecha(''); setMontoUsuarioId('')
+    setTransRepId(null); setTransAccion(null); setTransObs(''); setTransFecha(''); setTransUsuarioId('')
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  const descargarPdf = async (apiFn, filename) => {
+    try {
+      const blob = await apiFn()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      mostrarAlerta('error', `Error: ${err.message}`)
+    }
+  }
 
   const nombreUsuario = (id) => usuarios.find(u => u.usuario_id === id)?.nombre ?? id
 
@@ -290,7 +339,7 @@ export default function ReparacionesPage() {
       <div className="page-header">
         <h2>Reparaciones</h2>
         {!mostrarCrear && (
-          <button className="btn btn-primary" onClick={() => setMostrarCrear(true)}>+ Nueva reparacion</button>
+          <button className="btn btn-primary" onClick={() => { cerrarTodo(); setMostrarCrear(true) }}>+ Nueva reparacion</button>
         )}
       </div>
 
@@ -372,6 +421,25 @@ export default function ReparacionesPage() {
                   required min={0} placeholder="Monto adelanto" />
               </div>
             </div>
+            {esAdmin && (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Fecha de ingreso</label>
+                  <input type="date" value={formCrear.fecha_ingreso}
+                    onChange={e => setFormCrear(p => ({ ...p, fecha_ingreso: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label>Vendedor/a</label>
+                  <select value={formCrear.usuario_id}
+                    onChange={e => setFormCrear(p => ({ ...p, usuario_id: e.target.value }))}>
+                    <option value="">Usuario actual</option>
+                    {usuarios.map(u => (
+                      <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setMostrarCrear(false); setFormCrear(formCrearVacio) }}
@@ -455,9 +523,27 @@ export default function ReparacionesPage() {
                   onChange={e => setMontoObs(e.target.value)} placeholder="Motivo (opcional)" />
               </div>
             </div>
+            {esAdmin && (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Fecha</label>
+                  <input type="date" value={montoFecha}
+                    onChange={e => setMontoFecha(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>Vendedor/a</label>
+                  <select value={montoUsuarioId} onChange={e => setMontoUsuarioId(e.target.value)}>
+                    <option value="">Usuario actual</option>
+                    {usuarios.map(u => (
+                      <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
-                onClick={() => { setMontoRepId(null); setMontoAgregar(''); setMontoObs('') }}
+                onClick={() => { setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setMontoFecha(''); setMontoUsuarioId('') }}
                 disabled={loadingMonto}>Cancelar</button>
               <button type="submit" className="btn btn-primary" disabled={loadingMonto}>
                 {loadingMonto ? 'Guardando...' : 'Confirmar'}
@@ -479,6 +565,24 @@ export default function ReparacionesPage() {
                   onChange={e => setTransObs(e.target.value)} placeholder="Opcional" />
               </div>
             </div>
+            {esAdmin && (
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Fecha</label>
+                  <input type="date" value={transFecha}
+                    onChange={e => setTransFecha(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>Vendedor/a</label>
+                  <select value={transUsuarioId} onChange={e => setTransUsuarioId(e.target.value)}>
+                    <option value="">Usuario actual</option>
+                    {usuarios.map(u => (
+                      <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setTransRepId(null); setTransAccion(null) }}
@@ -513,6 +617,18 @@ export default function ReparacionesPage() {
                 </div>
               </div>
             )}
+            {esAdmin && usuarios.length > 0 && (
+              <div className="filtros-row">
+                <span className="filtros-sublabel">Vendedor/a:</span>
+                <div className="filtros-chips">
+                  {usuarios.map(u => (
+                    <button key={u.usuario_id}
+                      className={`filtro-chip ${filtroUsuarioId === u.usuario_id ? 'filtro-chip-activo' : ''}`}
+                      onClick={() => handleFiltroUsuario(u.usuario_id)}>{u.nombre}</button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="filtros-row">
               <span className="filtros-sublabel">Estado:</span>
               <div className="filtros-chips">
@@ -530,7 +646,7 @@ export default function ReparacionesPage() {
                 <input type="date" value={fechaHasta} onChange={handleFechaHasta} />
               </div>
             </div>
-            {(filtroLocalId || filtroEstado || fechaDesde || fechaHasta || busqueda) && (
+            {(filtroLocalId || filtroEstado || filtroUsuarioId || fechaDesde || fechaHasta || busqueda) && (
               <button className="btn-limpiar-filtros" onClick={limpiarFiltros}>Limpiar filtros</button>
             )}
           </div>
@@ -581,7 +697,7 @@ export default function ReparacionesPage() {
                         onClick={() => abrirEditar(rep)}>Editar</button>
 
                       <button className="btn btn-sm btn-secondary"
-                        onClick={() => { setMontoRepId(rep.reparacion_id); setMontoAgregar(''); setMontoObs('') }}>
+                        onClick={() => { cerrarTodo(); setMontoRepId(rep.reparacion_id) }}>
                         + Monto
                       </button>
 
@@ -592,24 +708,38 @@ export default function ReparacionesPage() {
                         </button>
                       )}
 
-                      {(rep.estado === 'ENTREGADO' || rep.estado === 'ENTREGADO_GARANTIA') && (
-                        <>
-                          <button className="btn btn-sm btn-secondary"
-                            onClick={() => abrirTransicion(rep.reparacion_id, 'garantia')}>
-                            Devolucion
-                          </button>
-                          <button className="btn btn-sm btn-secondary" disabled title="Proximamente">
-                            Certificado
-                          </button>
-                        </>
-                      )}
-
                       {rep.estado === 'REPARACION_GARANTIA' && (
                         <button className="btn btn-sm btn-primary"
                           onClick={() => abrirTransicion(rep.reparacion_id, 'entregar-garantia')}>
                           Entregar garantia
                         </button>
                       )}
+
+
+                      {(rep.estado === 'ENTREGADO' || rep.estado === 'ENTREGADO_GARANTIA') && (
+                        <>
+                          <button className="btn btn-sm btn-secondary btn-danger"
+                            onClick={() => abrirTransicion(rep.reparacion_id, 'garantia')}>
+                            Devolucion
+                          </button>
+                          <button className="btn btn-sm btn-secondary"
+                            onClick={() => descargarPdf(
+                              () => api.descargarCertificadoGarantia(rep.reparacion_id),
+                              `garantia_${String(rep.reparacion_id).padStart(4, '0')}.pdf`
+                            )}>
+                            Cert. Garantía
+                          </button>
+                        </>
+                      )}
+
+                      <button className="btn btn-sm btn-secondary"
+                        onClick={() => descargarPdf(
+                          () => api.descargarCertificadoRecepcion(rep.reparacion_id),
+                          `recepcion_${String(rep.reparacion_id).padStart(4, '0')}.pdf`
+                        )}>
+                        Cert. Recepción
+                      </button>
+
 
                       <button className="btn btn-sm btn-secondary"
                         onClick={() => verHistorial(rep)}>

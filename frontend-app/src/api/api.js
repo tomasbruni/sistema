@@ -618,8 +618,8 @@ export const api = {
       .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
 
   // REPARACIONES
-  listarReparaciones: ({ estado = null, local_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/reparaciones/?${buildParams({ estado, local_id, dni_cliente, fecha_desde, fecha_hasta })}`).then(handleResponse),
+  listarReparaciones: ({ estado = null, local_id = null, usuario_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/reparaciones/?${buildParams({ estado, local_id, usuario_id, dni_cliente, fecha_desde, fecha_hasta })}`).then(handleResponse),
 
   crearReparacion: (body) =>
     authFetch(`${BASE_URL}/reparaciones/`, {
@@ -657,6 +657,20 @@ export const api = {
     authFetch(`${BASE_URL}/reparaciones/${id}/entregar-garantia`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }).then(handleResponse),
+
+  descargarCertificadoRecepcion: (id) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/certificado-recepcion`)
+      .then(res => {
+        if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) })
+        return res.blob()
+      }),
+
+  descargarCertificadoGarantia: (id) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/certificado-garantia`)
+      .then(res => {
+        if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) })
+        return res.blob()
+      }),
 
   descargarReporteComisiones: ({ local_id, usuario_id, desde, hasta }) =>
     authFetch(`${BASE_URL}/reportes/comisiones/excel?${buildParams({ local_id, usuario_id, desde, hasta })}`),
