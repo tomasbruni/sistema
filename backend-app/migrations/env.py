@@ -15,11 +15,11 @@ config = context.config
 
 database_url = os.environ.get(
     "DATABASE_URL",
-    "postgresql+psycopg2://fastapi_user:fastapi_pass@localhost:5432/fastapi_db",
+    "postgresql+psycopg://fastapi_user:fastapi_pass@localhost:5432/fastapi_db",
 )
-# Render usa "postgres://" pero SQLAlchemy necesita "postgresql://"
+# Render usa "postgres://" pero SQLAlchemy necesita "postgresql+psycopg://"
 if database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
 
 config.set_main_option("sqlalchemy.url", database_url)
 
