@@ -30,7 +30,7 @@ export default function Navbar() {
               { to: "/finanzas", label: "Finanzas" },
             ]} />
             <li><NavLink to="/adicionales">Archivos maestros</NavLink></li>
-            <li><NavLink to="/pedidos-online">Pedidos Online</NavLink></li>
+            {/* <li><NavLink to="/pedidos-online">Pedidos Online</NavLink></li> */}
           </>
         )}
       </ul>
