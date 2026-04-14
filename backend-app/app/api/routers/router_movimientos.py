@@ -28,7 +28,6 @@ class MovimientoResponse(SQLModel):
     id: int
     accesorio_id: int
     accesorio_nombre: Optional[str] = None
-    accesorio_sku: Optional[str] = None
     local_id: int
     local_nombre: Optional[str] = None
     tipo_movimiento: TipoMovimiento
@@ -104,7 +103,6 @@ def listar_movimientos(
             id=mov.id,  # type: ignore
             accesorio_id=mov.accesorio_id,
             accesorio_nombre=acc.nombre,
-            accesorio_sku=acc.sku,
             local_id=mov.local_id,
             local_nombre=loc.nombre,
             tipo_movimiento=mov.tipo_movimiento,
@@ -142,7 +140,7 @@ def exportar_movimientos(
     header_fill  = PatternFill(fill_type="solid", fgColor="1A1A2E")
     header_align = Alignment(horizontal="center")
 
-    columnas = ["ID", "Fecha", "SKU", "Accesorio", "Local", "Tipo", "Cantidad", "Motivo", "Usuario"]
+    columnas = ["ID", "Fecha", "Accesorio", "Local", "Tipo", "Cantidad", "Motivo", "Usuario"]
     for col_idx, titulo in enumerate(columnas, start=1):
         cell = ws.cell(row=1, column=col_idx, value=titulo)  # type: ignore
         cell.font  = header_font
@@ -163,7 +161,6 @@ def exportar_movimientos(
         fila = [
             mov.id,
             fecha_str,
-            acc.sku,
             acc.nombre,
             loc.nombre,
             mov.tipo_movimiento.value,
@@ -225,7 +222,6 @@ def obtener_movimiento(
         id=mov.id,  # type: ignore
         accesorio_id=mov.accesorio_id,
         accesorio_nombre=acc.nombre,
-        accesorio_sku=acc.sku,
         local_id=mov.local_id,
         local_nombre=loc.nombre,
         tipo_movimiento=mov.tipo_movimiento,

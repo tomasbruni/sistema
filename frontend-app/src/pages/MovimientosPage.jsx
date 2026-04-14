@@ -214,7 +214,7 @@ export default function MovimientosPage() {
             <table className="acc-table">
               <thead>
                 <tr>
-                  <th>ID</th><th>Fecha</th><th>SKU</th><th>Accesorio</th>
+                  <th>ID</th><th>Fecha</th><th>ID Acc.</th><th>Accesorio</th>
                   <th>Local</th><th>Tipo</th><th>Cantidad</th><th>Motivo</th>
                 </tr>
               </thead>
@@ -223,7 +223,7 @@ export default function MovimientosPage() {
                   <tr key={mov.id} className={`mov-row-${mov.tipo_movimiento.toLowerCase()}`}>
                     <td className="mov-id">#{mov.id}</td>
                     <td className="mov-fecha">{formatFecha(mov.fecha)}</td>
-                    <td>{mov.accesorio_sku ? <span className="sku-badge">{mov.accesorio_sku}</span> : '—'}</td>
+                    <td>{mov.accesorio_id ?? '—'}</td>
                     <td>{mov.accesorio_nombre ?? '—'}</td>
                     <td>{mov.local_nombre ?? '—'}</td>
                     <td><span className={`tipo-badge ${CLASE_TIPO[mov.tipo_movimiento]}`}>{mov.tipo_movimiento}</span></td>

@@ -79,7 +79,7 @@ def seed_celulares(
                 precio=item.precio,
                 local_id=request.local_id,
                 estado=request.estado,
-            )
+            ) # type: ignore
             session.add(celular)
             session.flush()
             creados.append({"imei": item.imei, "marca": item.marca, "modelo": item.modelo})

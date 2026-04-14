@@ -48,7 +48,7 @@ def get_detalles_by_venta(session: Session, venta_ids: list[int]) -> dict[int, l
         result[det.venta_id].append({
             "tipo_producto":    "ACCESORIO",
             "nombre_producto":  acc.nombre,
-            "codigo":           acc.sku,
+            "codigo":           str(acc.accesorio_id),
             "precio_lista":     det.precio_lista,
             "precio_unitario":  det.precio_unitario,
             "cantidad":         det.cantidad,

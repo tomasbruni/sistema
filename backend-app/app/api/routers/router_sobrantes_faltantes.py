@@ -87,7 +87,7 @@ def upsert_sobrante_faltante(
         "id": registro.id,
         "local_id": registro.local_id,
         "usuario_id": registro.usuario_id,
-        "fecha": registro.fecha.isoformat(),
+        "fecha": registro.fecha.isoformat(), #type: ignore
         "sobrante": registro.sobrante,
         "faltante": registro.faltante,
     }
@@ -114,7 +114,7 @@ def get_sobrante_faltante(
         "id": registro.id,
         "local_id": registro.local_id,
         "usuario_id": registro.usuario_id,
-        "fecha": registro.fecha.isoformat(),
+        "fecha": registro.fecha.isoformat(), #type: ignore
         "sobrante": registro.sobrante,
         "faltante": registro.faltante,
     }

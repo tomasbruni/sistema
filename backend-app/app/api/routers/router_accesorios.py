@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlmodel import Session
 from pydantic import BaseModel
 
@@ -11,13 +11,16 @@ from app.db.models import *
 
 from app.api.modelscreate import *
 from app.api.modelsupdate import *
-from app.api.funciones.accesorios_funciones import normalizar_texto, generar_sku_accesorio, generar_nombre_accesorio
+from app.api.funciones.accesorios_funciones import generar_nombre_accesorio
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from io import BytesIO
 from openpyxl.styles import Font, PatternFill, Alignment
+
+import json
+import pandas as pd
 
 router = APIRouter(prefix="/accesorios",
                    tags=["ACCESORIOS"],
@@ -89,13 +92,11 @@ def seed_accesorios(
             continue
 
         try:
-            sku = generar_sku_accesorio(tipo_id=tipo.tipo_id, session=session, subtipo_id=subtipo_id)  # type: ignore
             accesorio = Accesorio( #type: ignore
                 nombre=item.nombre,
                 precio=item.precio,
                 tipo_id=tipo.tipo_id,
                 subtipo_id=subtipo_id,
-                sku=sku,
             )
             session.add(accesorio)
             session.flush()
@@ -104,7 +105,7 @@ def seed_accesorios(
                 StockAccesorio(accesorio_id=accesorio.accesorio_id, local_id=local.local_id, cantidad=0)  # type: ignore
                 for local in locales
             ])
-            creados.append({"nombre": item.nombre, "sku": sku, "tipo": item.tipo, "subtipo": item.subtipo})
+            creados.append({"nombre": item.nombre, "tipo": item.tipo, "subtipo": item.subtipo})
         except Exception as e:
             session.rollback()
             errores.append({"item": item.nombre, "motivo": str(e)})
@@ -147,7 +148,7 @@ def exportar_accesorios(
     header_fill  = PatternFill(fill_type="solid", fgColor="1A1A2E")
     header_align = Alignment(horizontal="center")
 
-    columnas = ["ID", "SKU", "Nombre", "Tipo ID", "Subtipo ID", "Marca Celular ID", "Modelo Celular ID", "Precio", "Activo"]
+    columnas = ["ID", "Nombre", "Tipo ID", "Subtipo ID", "Marca Celular ID", "Modelo Celular ID", "Precio", "Activo"]
     for col_idx, titulo in enumerate(columnas, start=1):
         cell = ws.cell(row=1, column=col_idx, value=titulo)  # type: ignore
         cell.font      = header_font
@@ -157,7 +158,6 @@ def exportar_accesorios(
     for a in accesorios:
         ws.append([  # type: ignore
             a.accesorio_id,
-            a.sku,
             a.nombre,
             a.tipo_id,
             a.subtipo_id,
@@ -167,7 +167,7 @@ def exportar_accesorios(
             a.activo,
         ])
 
-    anchos = {"A": 8, "B": 14, "C": 40, "D": 10, "E": 12, "F": 16, "G": 18, "H": 12, "I": 10}
+    anchos = {"A": 8, "B": 40, "C": 10, "D": 12, "E": 16, "F": 18, "G": 12, "H": 10}
     for col_letra, ancho in anchos.items():
         ws.column_dimensions[col_letra].width = ancho  # type: ignore
 
@@ -241,7 +241,7 @@ def verificar_duplicado(
         "es_duplicado_exacto": duplicado_exacto is not None,
         "duplicados": [
             {
-                "sku": s.sku,
+                "accesorio_id": s.accesorio_id,
                 "nombre": s.nombre,
                 "precio": s.precio,
                 "es_mismo_precio": s.precio == data.precio
@@ -277,16 +277,7 @@ def crear_accesorio(
         if not locales:
             raise HTTPException(status_code=400, detail="No hay locales")
 
-        sku = generar_sku_accesorio(
-            tipo_id=accesorio_data.tipo_id,
-            session=session,
-            subtipo_id=accesorio_data.subtipo_id,
-            marca_id=accesorio_data.marca_id,
-            marca_celular_id=accesorio_data.marca_celular_id,
-            modelo_celular_id=accesorio_data.modelo_celular_id
-        )
-
-        accesorio = Accesorio(**accesorio_data.model_dump(), sku=sku)
+        accesorio = Accesorio(**accesorio_data.model_dump())
         session.add(accesorio)
         session.flush()
 
@@ -468,3 +459,358 @@ def eliminar_accesorio(
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=f"Error al eliminar accesorio: {str(e)}")
+
+
+# ─── IMPORTACIÓN DESDE EXCEL / ODS ───────────────────────────────────────────
+
+@router.post("/importar-excel")
+def importar_desde_excel(
+    archivo:      UploadFile = File(...),
+    tipo_id:      int        = Form(...),
+    local_id:     int        = Form(...),
+    receptor_id:  int        = Form(...),
+    precios:      str        = Form(...),   # JSON: {"SILICONA": 9000, "TRANSPARENTE": 8000, ...}
+    observaciones: str       = Form(""),
+    session:      Session    = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin),
+):
+    """
+    Importa accesorios y stock inicial desde un archivo Excel (.xlsx) u ODS (.ods).
+
+    Formato esperado del archivo:
+      - Columnas obligatorias: MARCA, MODELO
+      - Una columna por subtipo (ej. SILICONA, TRANSPARENTE…) con la cantidad de stock a ingresar
+
+    Parámetros:
+      - tipo_id:     ID del tipo de accesorio al que pertenecen todos los ítems del archivo
+      - local_id:    local donde se registra el ingreso de stock
+      - receptor_id: usuario que recibe la mercadería
+      - precios:     JSON con precio por subtipo  {"SILICONA": 9000, ...}
+      - observaciones: texto libre para el ingreso de lote (opcional)
+
+    Proceso:
+      1. Lee el archivo y normaliza columnas
+      2. Crea marcas y modelos que no existan (idempotente)
+      3. Crea accesorios que no existan (idempotente)
+      4. Si hay cantidades > 0, genera un ingreso de lote
+
+    Devuelve un resumen con contadores y lista de errores por ítem.
+    """
+
+    # ── 1. Parsear precios ────────────────────────────────────────────────────
+    try:
+        precios_dict: dict[str, int] = {
+            k.strip().upper(): int(v)
+            for k, v in json.loads(precios).items()
+        }
+    except Exception:
+        raise HTTPException(status_code=400, detail="El campo 'precios' debe ser un JSON válido: {\"SILICONA\": 9000, ...}")
+
+    # ── 2. Leer el archivo con pandas ─────────────────────────────────────────
+    nombre_archivo = archivo.filename or ""
+    contenido      = archivo.file.read()
+
+    try:
+        if nombre_archivo.endswith(".ods"):
+            df = pd.read_excel(BytesIO(contenido), sheet_name=0, engine="odf")
+        elif nombre_archivo.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(BytesIO(contenido), sheet_name=0)
+        else:
+            raise HTTPException(status_code=400, detail="Formato no soportado. Usá .xlsx o .ods")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo: {e}")
+
+    # Normalizar nombres de columna: sin espacios extra, todo en mayúsculas
+    df.columns = [str(c).strip().upper() for c in df.columns]
+
+    if "MARCA" not in df.columns or "MODELO" not in df.columns:
+        raise HTTPException(status_code=400, detail="El archivo debe tener columnas MARCA y MODELO")
+
+    # ── 3. Resolver subtipos disponibles para este tipo_id ────────────────────
+    # Solo procesamos columnas que coincidan con un subtipo registrado en la DB
+    # para el tipo recibido, Y que además tengan un precio definido.
+    subtipos_db: dict[str, int] = {
+        s.nombre.strip().upper(): s.subtipo_id   # type: ignore
+        for s in session.exec(
+            select(SubtipoAccesorio).where(SubtipoAccesorio.tipo_id == tipo_id)
+        ).all()
+    }
+
+    # Columnas del archivo que son subtipos reconocidos con precio definido
+    subtipos_activos: dict[str, int] = {
+        nombre: subtipo_id
+        for nombre, subtipo_id in subtipos_db.items()
+        if nombre in df.columns and nombre in precios_dict
+    }
+
+    if not subtipos_activos:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Ninguna columna del archivo coincide con subtipos registrados para ese tipo_id "
+                "o no tienen precio definido. "
+                f"Subtipos en DB: {list(subtipos_db.keys())}. "
+                f"Columnas en archivo: {list(df.columns)}."
+            )
+        )
+
+    # Advertencias sobre columnas ignoradas:
+    # subtipos con columna en el archivo pero sin precio definido
+    advertencias: list[str] = []
+    for nombre in subtipos_db:
+        if nombre in df.columns and nombre not in precios_dict:
+            advertencias.append(f"Subtipo '{nombre}' está en el archivo pero no tiene precio definido — se ignoró")
+    # precios definidos que no coinciden con ningún subtipo de la DB
+    for nombre in precios_dict:
+        if nombre not in subtipos_db:
+            advertencias.append(f"Precio definido para '{nombre}' pero no es un subtipo registrado para este tipo — se ignoró")
+    # precio definido y subtipo en DB, pero sin columna en el archivo
+    for nombre in precios_dict:
+        if nombre in subtipos_db and nombre not in df.columns:
+            advertencias.append(f"Precio definido para '{nombre}' pero no hay columna '{nombre}' en el archivo — se ignoró")
+
+    # ── 4. Verificar que el tipo y el local existan ───────────────────────────
+    if not session.get(TipoAccesorio, tipo_id):
+        raise HTTPException(status_code=404, detail=f"Tipo de accesorio {tipo_id} no encontrado")
+
+    locales = session.exec(select(Local)).all()
+    if not any(l.local_id == local_id for l in locales):
+        raise HTTPException(status_code=404, detail=f"Local {local_id} no encontrado")
+
+    # ── 5. Crear marcas y modelos ─────────────────────────────────────────────
+    # Acumulamos IDs en memoria para no hacer una query por cada fila del loop
+    marcas_creadas    = 0
+    marcas_existentes = 0
+    modelos_creados    = 0
+    modelos_existentes = 0
+
+    # marca_nombre → marca_celular_id
+    marcas_ids: dict[str, int] = {}
+    # (marca_nombre, modelo_nombre) → modelo_celular_id
+    modelos_ids: dict[tuple[str, str], int] = {}
+
+    errores: list[dict] = []
+    filas_invalidas: set[int] = set()  # índices de filas a saltear en el loop de accesorios
+
+    for idx_raw, row in df.iterrows():
+        idx = int(idx_raw)  # type: ignore[arg-type]
+        marca_raw  = row["MARCA"]
+        modelo_raw = row["MODELO"]
+
+        # Saltear filas con MARCA o MODELO vacío o NaN
+        fila_num = int(idx) + 2  # +2 porque el Excel empieza en 1 y la fila 1 es el header
+        if pd.isna(marca_raw) or str(marca_raw).strip() == "":
+            errores.append({"fila": f"Fila {fila_num}", "motivo": "MARCA vacía o inválida"})
+            filas_invalidas.add(idx)
+            continue
+        if pd.isna(modelo_raw) or str(modelo_raw).strip() == "":
+            errores.append({"fila": f"Fila {fila_num}", "motivo": "MODELO vacío o inválido"})
+            filas_invalidas.add(idx)
+            continue
+
+        marca_nombre  = str(marca_raw).strip().upper()
+        modelo_nombre = str(modelo_raw).strip().upper()
+
+        # Crear la marca si no existe, o reusar la existente
+        if marca_nombre not in marcas_ids:
+            marca = session.exec(
+                select(MarcaCelular).where(MarcaCelular.nombre == marca_nombre)
+            ).first()
+
+            if marca:
+                marcas_existentes += 1
+            else:
+                marca = MarcaCelular(nombre=marca_nombre)
+                session.add(marca)
+                session.flush()   # necesitamos el ID antes de seguir
+                marcas_creadas += 1
+
+            marcas_ids[marca_nombre] = marca.marca_celular_id  # type: ignore
+
+        marca_id = marcas_ids[marca_nombre]
+
+        # Crear el modelo si no existe bajo esa marca
+        if (marca_nombre, modelo_nombre) not in modelos_ids:
+            modelo = session.exec(
+                select(ModeloCelular).where(
+                    ModeloCelular.marca_celular_id == marca_id,
+                    ModeloCelular.nombre           == modelo_nombre,
+                )
+            ).first()
+
+            if modelo:
+                modelos_existentes += 1
+            else:
+                modelo = ModeloCelular(nombre=modelo_nombre, marca_celular_id=marca_id)  # type: ignore
+                session.add(modelo)
+                session.flush()
+                modelos_creados += 1
+
+            modelos_ids[(marca_nombre, modelo_nombre)] = modelo.modelo_celular_id  # type: ignore
+
+    # ── 6. Crear accesorios y acumular ítems para el ingreso ──────────────────
+    accesorios_creados  = 0
+    accesorios_omitidos = 0
+
+    # Lista de {accesorio_id, cantidad_ingreso} para el ingreso de lote
+    items_ingreso: list[dict] = []
+
+    filas_validas = len(df) - len(filas_invalidas)
+    combinaciones_esperadas = filas_validas * len(subtipos_activos)
+
+    for idx, row in df.iterrows():
+        # Saltear filas que ya se marcaron como inválidas en el paso anterior
+        if idx in filas_invalidas:
+            continue
+
+        marca_nombre  = str(row["MARCA"]).strip().upper()
+        modelo_nombre = str(row["MODELO"]).strip().upper()
+
+        marca_id  = marcas_ids.get(marca_nombre)
+        modelo_id = modelos_ids.get((marca_nombre, modelo_nombre))
+
+        if not marca_id or not modelo_id:
+            # No debería ocurrir, pero lo capturamos igual
+            errores.append({"fila": f"{marca_nombre} / {modelo_nombre}", "motivo": "IDs no resueltos"})
+            continue
+
+        for subtipo_nombre, subtipo_id in subtipos_activos.items():
+            precio   = precios_dict[subtipo_nombre]
+            raw_cantidad = row.get(subtipo_nombre)
+            cantidad = 0 if (raw_cantidad is None or pd.isna(raw_cantidad)) else int(raw_cantidad)
+
+            # Nombre descriptivo del accesorio
+            nombre_acc = f"{subtipo_nombre} {marca_nombre} {modelo_nombre}"
+
+            # Verificar si ya existe un accesorio con esa combinación exacta
+            existente = session.exec(
+                select(Accesorio).where(
+                    Accesorio.nombre            == nombre_acc,
+                    Accesorio.tipo_id           == tipo_id,       # type: ignore
+                    Accesorio.subtipo_id        == subtipo_id,    # type: ignore
+                    Accesorio.marca_celular_id  == marca_id,      # type: ignore
+                    Accesorio.modelo_celular_id == modelo_id,     # type: ignore
+                    Accesorio.activo            == True,          # type: ignore
+                )
+            ).first()
+
+            if existente:
+                accesorios_omitidos += 1
+                # Aunque el accesorio exista, puede tener stock a ingresar.
+                # Solo lo agregamos si el stock actual en ese local es 0,
+                # para no duplicar si la importación se corre más de una vez.
+                if cantidad > 0:
+                    stock_actual = session.exec(
+                        select(StockAccesorio).where(
+                            StockAccesorio.accesorio_id == existente.accesorio_id,
+                            StockAccesorio.local_id     == local_id,
+                        )
+                    ).first()
+                    if stock_actual and stock_actual.cantidad == 0:
+                        items_ingreso.append({
+                            "accesorio_id":    existente.accesorio_id,
+                            "cantidad_ingreso": cantidad,
+                        })
+                continue
+
+            try:
+                accesorio = Accesorio(  # type: ignore
+                    nombre            = nombre_acc,
+                    precio            = precio,
+                    tipo_id           = tipo_id,
+                    subtipo_id        = subtipo_id,
+                    marca_celular_id  = marca_id,
+                    modelo_celular_id = modelo_id,
+                )
+                session.add(accesorio)
+                session.flush()  # obtenemos el ID antes de crear los stocks
+
+                # Crear entrada de stock en 0 para cada local
+                session.add_all([
+                    StockAccesorio(
+                        accesorio_id = accesorio.accesorio_id,  # type: ignore
+                        local_id     = local.local_id,          # type: ignore
+                        cantidad     = 0,
+                    )
+                    for local in locales
+                ])
+
+                accesorios_creados += 1
+
+                # Agregar al ingreso solo si hay cantidad a cargar
+                if cantidad > 0:
+                    items_ingreso.append({
+                        "accesorio_id":    accesorio.accesorio_id,
+                        "cantidad_ingreso": cantidad,
+                    })
+
+            except Exception as e:
+                session.rollback()
+                errores.append({"fila": nombre_acc, "motivo": str(e)})
+                continue
+
+    session.commit()
+
+    # ── 7. Ingreso de lote ────────────────────────────────────────────────────
+    ingreso_lote_id  = None
+    unidades_totales = 0
+
+    if items_ingreso:
+        lote = IngresoLote(  # type: ignore
+            local_id     = local_id,
+            receptor_id  = receptor_id,
+            observaciones = observaciones or None,
+        )
+        session.add(lote)
+        session.flush()
+
+        for item in items_ingreso:
+            stock = session.exec(
+                select(StockAccesorio).where(
+                    StockAccesorio.accesorio_id == item["accesorio_id"],
+                    StockAccesorio.local_id     == local_id,
+                )
+            ).first()
+
+            if not stock:
+                # No debería pasar porque lo creamos arriba, pero por las dudas
+                errores.append({"fila": f"accesorio_id={item['accesorio_id']}", "motivo": "Stock no encontrado para ingreso"})
+                continue
+
+            stock_anterior  = stock.cantidad
+            stock.cantidad += item["cantidad_ingreso"]
+            session.add(stock)
+
+            # Registrar el movimiento de stock
+            session.add(MovimientoStock(  # type: ignore
+                accesorio_id    = item["accesorio_id"],
+                local_id        = local_id,
+                tipo_movimiento = TipoMovimiento.ENTRADA,
+                cantidad        = item["cantidad_ingreso"],
+                motivo          = f"Importación Excel — {observaciones}" if observaciones else "Importación Excel",
+                usuario_id      = current_user.usuario_id,
+                ingreso_lote_id = lote.ingreso_lote_id,
+            ))
+
+            unidades_totales += item["cantidad_ingreso"]
+
+        session.commit()
+        ingreso_lote_id = lote.ingreso_lote_id
+
+    # ── 8. Respuesta ──────────────────────────────────────────────────────────
+    return {
+        "marcas_creadas":           marcas_creadas,
+        "marcas_existentes":        marcas_existentes,
+        "modelos_creados":          modelos_creados,
+        "modelos_existentes":       modelos_existentes,
+        "accesorios_creados":       accesorios_creados,
+        "accesorios_omitidos":      accesorios_omitidos,
+        "combinaciones_esperadas":  combinaciones_esperadas,
+        "errores":                  errores,
+        "advertencias":             advertencias,
+        "ingreso_lote_id":          ingreso_lote_id,
+        "items_ingresados":         len(items_ingreso),
+        "unidades_totales":         unidades_totales,
+    }

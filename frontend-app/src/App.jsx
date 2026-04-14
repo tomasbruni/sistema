@@ -16,6 +16,7 @@ import TransferenciasPage from './pages/TransferenciasPage'
 import PedidosOnlinePage from './pages/PedidosOnlinePage'
 import MovimientosFinancierosPage from './pages/MovimientosFinancierosPage'
 import ReparacionesPage from './pages/ReparacionesPage'
+import ImportarExcelPage from './pages/ImportarExcelPage'
 
 function RutaPrivada({ children }) {
   const { token } = useAuth()
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="pedidos-online" element={<RutaAdmin><PedidosOnlinePage /></RutaAdmin>} />
           <Route path="finanzas" element={<RutaAdmin><MovimientosFinancierosPage /></RutaAdmin>} />
           <Route path="reparaciones" element={<ReparacionesPage />} />
+          <Route path="importar-excel" element={<RutaAdmin><ImportarExcelPage /></RutaAdmin>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

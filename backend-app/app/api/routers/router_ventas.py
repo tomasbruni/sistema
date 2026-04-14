@@ -424,7 +424,7 @@ def seed_ventas(
                 # ── Pagos ────────────────────────────────────────────────────
                 for pago in venta_item.pagos:
                     session.add(PagoVenta(
-                        venta_id=venta.venta_id,
+                        venta_id=venta.venta_id, #type: ignore
                         medio_de_pago=pago.medio_de_pago.upper(),
                         importe=pago.importe,
                         cuotas=1,
@@ -460,29 +460,29 @@ def seed_ventas(
                             cantidad=faltante,
                             motivo="Ajuste automático seed ventas",
                             usuario_id=request.usuario_id,
-                        ))
+                        )) #type: ignore
 
                     stock.cantidad -= item.cantidad
                     comision = _calcular_comision(config_acc, item.precio_unitario, item.cantidad)
                     monto_total += item.precio_unitario * item.cantidad
 
                     session.add(DetalleVentaAccesorio(
-                        venta_id=venta.venta_id,
-                        accesorio_id=accesorio.accesorio_id,
+                        venta_id=venta.venta_id, #type: ignore
+                        accesorio_id=accesorio.accesorio_id, #type: ignore
                         precio_lista=accesorio.precio,
                         precio_unitario=item.precio_unitario,
                         cantidad=item.cantidad,
                         comision_importe=comision,
-                    ))
+                    )) 
                     session.add(MovimientoStock(
-                        accesorio_id=accesorio.accesorio_id,
+                        accesorio_id=accesorio.accesorio_id, 
                         local_id=request.local_id,
                         tipo_movimiento=TipoMovimiento.VENTA,
                         cantidad=-item.cantidad,
                         venta_id=venta.venta_id,
                         motivo=f"Venta #{venta.venta_id} - {accesorio.nombre}",
                         usuario_id=request.usuario_id,
-                    ))
+                    )) #type: ignore
 
                 # ── Celulares ────────────────────────────────────────────────
                 for item in venta_item.celulares:
@@ -499,8 +499,8 @@ def seed_ventas(
                     monto_total += item.precio_unitario
 
                     session.add(DetalleVentaCelular(
-                        venta_id=venta.venta_id,
-                        celular_id=celular.celular_id,
+                        venta_id=venta.venta_id, #type: ignore
+                        celular_id=celular.celular_id, #type: ignore
                         imei=celular.imei,
                         precio_lista=celular.precio,
                         precio_unitario=item.precio_unitario,
@@ -522,8 +522,8 @@ def seed_ventas(
                     monto_total += item.precio_unitario
 
                     session.add(DetalleVentaChip(
-                        venta_id=venta.venta_id,
-                        chip_id=chip.chip_id,
+                        venta_id=venta.venta_id, #type: ignore
+                        chip_id=chip.chip_id, #type: ignore
                         numero_serie=chip.numero_serie,
                         precio_lista=chip.precio,
                         precio_unitario=item.precio_unitario,

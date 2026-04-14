@@ -145,7 +145,6 @@ export default function StockPage() {
         _key:         `acc-${formItem.accesorio_id}`,
         accesorio_id: formItem.accesorio_id,
         nombre:       formItem.accesorio_data.nombre,
-        sku:          formItem.accesorio_data.sku,
         cantidad,
       }])
     }
@@ -603,7 +602,7 @@ export default function StockPage() {
                 <table className="acc-table">
                   <thead>
                     <tr>
-                      <th>SKU</th>
+                      <th>ID</th>
                       <th>Accesorio</th>
                       <th>Local</th>
                       <th>Cantidad</th>
@@ -619,7 +618,7 @@ export default function StockPage() {
                           itemSeleccionado?.id === item.id ? 'row-seleccionada' : '',
                         ].join(' ')}
                       >
-                        <td><span className="sku-badge">{item.accesorio_sku}</span></td>
+                        <td>{item.accesorio_id}</td>
                         <td>{item.accesorio_nombre}</td>
                         <td>{item.local_nombre}</td>
                         <td>

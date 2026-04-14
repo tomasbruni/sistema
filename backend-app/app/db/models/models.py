@@ -46,12 +46,6 @@ class Accesorio(SQLModel, table=True):
     )
 
     accesorio_id: Optional[int] = Field(default=None, primary_key=True)
-    #si intento meter 2 cosas exactamente iguales, falla aca
-    sku: str = Field(
-        index=True,
-        nullable=False,
-        sa_column_kwargs={"unique": True}
-    )
     nombre: str
     precio: int
     tipo_id: int = Field(foreign_key="tipos_accesorios.tipo_id")
@@ -91,7 +85,7 @@ class ModeloCelular(SQLModel, table=True):
 
     modelo_celular_id: Optional[int] = Field(default=None, primary_key=True)
     marca_celular_id: int = Field(foreign_key="marcas_celulares.marca_celular_id")
-    nombre: str = Field(index=True,sa_column_kwargs={"unique": True})
+    nombre: str = Field(index=True)
     activo: bool = Field(default = True)
 
 class MarcaCelular(SQLModel, table=True):

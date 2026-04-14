@@ -24,6 +24,7 @@ export default function Navbar() {
               { to: "/accesorios", label: "Accesorios" },
               { to: "/chips", label: "Chips" },
               { to: "/celulares", label: "Celulares" },
+              { to: "/importar-excel", label: "Importar Excel" },
             ]} />
             <NavDropdown label="Finanzas" items={[
               { to: "/reportes", label: "Reportes" },

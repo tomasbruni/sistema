@@ -46,7 +46,7 @@ function ModalTransferencia({ datos, onClose }) {
           <table className="modal-table">
             <thead>
               <tr>
-                <th>SKU</th>
+                <th>ID</th>
                 <th>Producto</th>
                 <th className="num">Cantidad</th>
               </tr>
@@ -54,7 +54,7 @@ function ModalTransferencia({ datos, onClose }) {
             <tbody>
               {items.map((item, i) => (
                 <tr key={i}>
-                  <td>{item.sku}</td>
+                  <td>{item.accesorio_id}</td>
                   <td>{item.nombre}</td>
                   <td className="num">{item.cantidad}</td>
                 </tr>
