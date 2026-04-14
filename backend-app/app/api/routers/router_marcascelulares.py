@@ -43,6 +43,10 @@ def seed_marcas_y_modelos(
     marcas_existentes = []
     modelos_creados = []
     modelos_existentes = []
+    # marca_nombre → marca_celular_id
+    marcas_ids: dict[str, int] = {}
+    # (marca_nombre, modelo_nombre) → modelo_celular_id
+    modelos_ids: dict[tuple[str, str], int] = {}
 
     for item in request.data:
         marca = session.exec(
@@ -57,6 +61,8 @@ def seed_marcas_y_modelos(
             session.flush()
             marcas_creadas.append(item.marca)
 
+        marcas_ids[item.marca] = marca.marca_celular_id  # type: ignore
+
         for nombre_modelo in item.modelos:
             modelo = session.exec(
                 select(ModeloCelular).where(
@@ -68,9 +74,12 @@ def seed_marcas_y_modelos(
             if modelo:
                 modelos_existentes.append({"marca": item.marca, "modelo": nombre_modelo})
             else:
-                modelo = ModeloCelular(nombre=nombre_modelo, marca_celular_id=marca.marca_celular_id)
+                modelo = ModeloCelular(nombre=nombre_modelo, marca_celular_id=marca.marca_celular_id) # type: ignore
                 session.add(modelo)
+                session.flush()
                 modelos_creados.append({"marca": item.marca, "modelo": nombre_modelo})
+
+            modelos_ids[(item.marca, nombre_modelo)] = modelo.modelo_celular_id  # type: ignore
 
     session.commit()
 
@@ -79,6 +88,8 @@ def seed_marcas_y_modelos(
         "marcas_existentes": marcas_existentes,
         "modelos_creados": modelos_creados,
         "modelos_existentes": modelos_existentes,
+        "marcas_ids": marcas_ids,
+        "modelos_ids": {f"{m}|{mod}": id_ for (m, mod), id_ in modelos_ids.items()},
     }
 
 

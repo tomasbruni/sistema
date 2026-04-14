@@ -251,6 +251,13 @@ export const api = {
   eliminarAccesorio: (id) =>
     authFetch(`${BASE_URL}/accesorios/${id}`, { method: 'DELETE' }).then(handleResponse),
 
+  // FormData — no pasar Content-Type, el browser lo setea con el boundary correcto
+  importarExcel: (formData) =>
+    authFetch(`${BASE_URL}/accesorios/importar-excel`, {
+      method: 'POST',
+      body: formData,
+    }).then(handleResponse),
+
   exportarAccesorios: ({ buscar = '', tipo_id = null, subtipo_id = null, activo = true } = {}) =>
     authFetch(`${BASE_URL}/accesorios/export?${buildParams({ buscar, tipo_id, subtipo_id, activo })}`)
       .then(res => {

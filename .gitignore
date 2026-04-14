@@ -33,6 +33,7 @@ __pycache__/
 # =========================
 # 🔹 Editor / Sistema
 # =========================
+.~lock.*#
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -51,3 +52,10 @@ Iniciar Sistema.desktop
 # 🔹 Seeds
 # =========================
 backend-app/seed_*.json
+
+import_fundas.py
+venv-scripts
+fundas_stock.ods
+prueba_pandas.py
+cargar_protectores.py
+verificar_accesorios.py
