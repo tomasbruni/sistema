@@ -28,7 +28,7 @@ export default function AgregarProducto({
               }))
             }}
             onSearch={(t) => buscadorSelect('accesorios', t)}
-            placeholder="Buscar por nombre o SKU..."
+            placeholder="Buscar por nombre..."
           />
         </div>
 

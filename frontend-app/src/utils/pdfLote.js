@@ -94,7 +94,7 @@ export function generarPdfIngreso(data) {
 
   const filas = data.items.map((item, i) => [
     i + 1,
-    item.accesorio_sku,
+    item.accesorio_id,
     item.accesorio_nombre,
     item.cantidad_ingresada,
     item.stock_anterior,
@@ -103,7 +103,7 @@ export function generarPdfIngreso(data) {
 
   const finalY = _tabla(
     doc,
-    [['#', 'SKU', 'Producto', 'Cant. ingresada', 'Stock anterior', 'Stock nuevo']],
+    [['#', 'ID', 'Producto', 'Cant. ingresada', 'Stock anterior', 'Stock nuevo']],
     filas,
     cursorY + 2
   )
@@ -138,7 +138,7 @@ export function generarPdfTransferencia(data) {
 
   const filas = data.items.map((item, i) => [
     i + 1,
-    item.accesorio_sku,
+    item.accesorio_id,
     item.accesorio_nombre,
     item.cantidad_transferida,
     item.stock_origen_anterior,
@@ -148,7 +148,7 @@ export function generarPdfTransferencia(data) {
   ])
 
   const head = [[
-    '#', 'SKU', 'Producto', 'Cant. transferida',
+    '#', 'ID', 'Producto', 'Cant. transferida',
     `Stock ${data.local_origen_nombre} (ant.)`,
     `Stock ${data.local_origen_nombre} (nuevo)`,
     `Stock ${data.local_destino_nombre} (ant.)`,

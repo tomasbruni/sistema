@@ -21,7 +21,7 @@ export default function CarritoProductos({
         <table className="acc-table">
           <thead>
             <tr>
-              <th>CODIGO</th>
+              <th>ID</th>
               <th>Producto</th>
               <th>Cantidad</th>
               <th></th>
@@ -31,7 +31,7 @@ export default function CarritoProductos({
           <tbody>
             {carrito.map(item => (
               <tr key={item._key}>
-                <td><span className="sku-badge">{item.sku}</span></td>
+                <td>{item.accesorio_id}</td>
                 <td>{item.nombre}</td>
 
                 <td>

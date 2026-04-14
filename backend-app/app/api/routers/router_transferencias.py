@@ -28,7 +28,7 @@ router = APIRouter(prefix="/transferencias", tags=["Transferencias"])
 # ─── SCHEMAS ──────────────────────────────────────────────────────────────────
 
 class ItemTransferenciaResponse(SQLModel):
-    sku: str
+    accesorio_id: int
     nombre: str
     cantidad: int
 
@@ -55,7 +55,7 @@ def _get_items(transferencia_id: int, session: Session) -> list[ItemTransferenci
     ).all()
     return [
         ItemTransferenciaResponse(
-            sku=acc.sku,
+            accesorio_id=acc.accesorio_id, #type: ignore
             nombre=acc.nombre,
             cantidad=abs(mov.cantidad),
         )
@@ -225,12 +225,12 @@ def transferencia_pdf(
     story.append(Spacer(1, 10*mm))
 
     # ── Tabla de productos ─────────────────────────────────────────────────────
-    header = [Paragraph(t, hcell) for t in ["SKU", "Nombre", "Cantidad"]]
+    header = [Paragraph(t, hcell) for t in ["ID", "Nombre", "Cantidad"]]
     data   = [header]
     total_unidades = 0
     for item in items:
         data.append([
-            Paragraph(item.sku,         cell),
+            Paragraph(str(item.accesorio_id), cell),
             Paragraph(item.nombre,      cell),
             Paragraph(str(item.cantidad), cell),
         ])

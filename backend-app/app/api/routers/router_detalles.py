@@ -12,7 +12,7 @@ from app.db.models import *
 
 from app.api.modelscreate import *
 from app.api.modelsupdate import *
-from app.api.funciones.accesorios_funciones import normalizar_texto, generar_sku_accesorio, generar_nombre_accesorio
+from app.api.funciones.accesorios_funciones import generar_nombre_accesorio
 from app.api.funciones.ventas_funciones import get_detalles_by_venta, get_pagos_by_venta
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 

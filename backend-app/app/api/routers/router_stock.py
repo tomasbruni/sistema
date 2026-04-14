@@ -32,7 +32,6 @@ class StockResponse(SQLModel):
     local_id: int
     cantidad: int
     accesorio_nombre: Optional[str] = None
-    accesorio_sku: Optional[str] = None
     local_nombre: Optional[str] = None
 
 @router.get("/export")
@@ -73,7 +72,7 @@ def exportar_stock(
     header_fill = PatternFill(fill_type="solid", fgColor="1A1A2E")
     header_align = Alignment(horizontal="center")
 
-    columnas = ["SKU", "Accesorio", "Local", "Cantidad", "Estado"]
+    columnas = ["ID", "Accesorio", "Local", "Cantidad", "Estado"]
     for col_idx, titulo in enumerate(columnas, start=1):
         cell = ws.cell(row=1, column=col_idx, value=titulo) #type: ignore
         cell.font = header_font
@@ -82,7 +81,7 @@ def exportar_stock(
 
     for stock, accesorio, local in resultados:
         ws.append([ #type: ignore
-            accesorio.sku,
+            accesorio.accesorio_id,
             accesorio.nombre,
             local.nombre,
             stock.cantidad,
@@ -143,7 +142,6 @@ def listar_stock(
             local_id=stock.local_id,
             cantidad=stock.cantidad,
             accesorio_nombre=accesorio.nombre,
-            accesorio_sku=accesorio.sku,
             local_nombre=local.nombre
         )
         for stock, accesorio, local in resultados
@@ -173,7 +171,6 @@ def obtener_stock(
             local_id=stock.local_id,
             cantidad=stock.cantidad,
             accesorio_nombre=accesorio.nombre,
-            accesorio_sku=accesorio.sku,
             local_nombre=local.nombre
         )
     else:
@@ -444,7 +441,6 @@ def ingresar_lote(
             resultado_items.append({
                 "accesorio_id": item.accesorio_id,
                 "accesorio_nombre": accesorio.nombre,
-                "accesorio_sku": accesorio.sku,
                 "cantidad_ingresada": item.cantidad_ingreso,
                 "stock_anterior": stock_anterior,
                 "stock_nuevo": stock.cantidad,
@@ -614,7 +610,6 @@ def transferir_lote(
             resultado_items.append({
                 "accesorio_id": item.accesorio_id,
                 "accesorio_nombre": accesorio.nombre,
-                "accesorio_sku": accesorio.sku,
                 "cantidad_transferida": item.cantidad_a_transferir,
                 "stock_origen_anterior": stock_anterior_origen,
                 "stock_origen_nuevo": stock_origen.cantidad,
@@ -870,7 +865,7 @@ def seed_stock(
                 cantidad=diferencia,
                 motivo=f"Seed stock ({'suma' if sumar else 'seteo'} {cantidad})",
                 usuario_id=current_user.usuario_id,
-            ))
+            )) #type: ignore
 
     session.commit()
     return {

@@ -165,9 +165,9 @@ def ingreso_pdf(
     for mov in movimientos:
         acc = session.get(Accesorio, mov.accesorio_id)
         filas.append({
-            "sku":      acc.sku    if acc else "-",
-            "nombre":   acc.nombre if acc else f"ID {mov.accesorio_id}",
-            "cantidad": mov.cantidad,
+            "accesorio_id": acc.accesorio_id if acc else mov.accesorio_id,
+            "nombre":       acc.nombre if acc else f"ID {mov.accesorio_id}",
+            "cantidad":     mov.cantidad,
         })
         total_unidades += mov.cantidad
 
@@ -224,11 +224,11 @@ def ingreso_pdf(
     story.append(Spacer(1, 10*mm))
 
     # ── Tabla de productos ─────────────────────────────────────────────────────
-    header = [Paragraph(t, hcell) for t in ["SKU", "Nombre", "Cantidad"]]
+    header = [Paragraph(t, hcell) for t in ["ID", "Nombre", "Cantidad"]]
     data   = [header]
     for f in filas:
         data.append([
-            Paragraph(f["sku"],        cell),
+            Paragraph(str(f["accesorio_id"]), cell),
             Paragraph(f["nombre"],     cell),
             Paragraph(str(f["cantidad"]), cell),
         ])

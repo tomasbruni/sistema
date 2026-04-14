@@ -160,7 +160,7 @@ export default function AccesoriosPage() {
         if (res?.tiene_duplicados) {
           const lineas = res.duplicados.map(d => {
             const etiqueta = d.es_mismo_precio ? '🔴 Duplicado exacto' : '🟡 Similar'
-            return `  ${etiqueta}: "${d.nombre}" — SKU: ${d.sku} — $${d.precio.toLocaleString()}`
+            return `  ${etiqueta}: "${d.nombre}" — ID: ${d.accesorio_id} — $${d.precio.toLocaleString()}`
           }).join('\n')
 
           const encabezado = res.es_duplicado_exacto
@@ -349,7 +349,7 @@ export default function AccesoriosPage() {
             <input
               className="buscador"
               type="search"
-              placeholder="Buscar por nombre o SKU..."
+              placeholder="Buscar por nombre..."
               value={busqueda}
               onChange={handleBusqueda}
             />
@@ -431,7 +431,7 @@ export default function AccesoriosPage() {
             <table className="acc-table">
               <thead>
                 <tr>
-                  <th>SKU</th>
+                  <th>ID</th>
                   <th>Nombre</th>
                   <th>Precio</th>
                   <th>Tipo</th>
@@ -443,7 +443,7 @@ export default function AccesoriosPage() {
               <tbody>
                 {accesorios.map(acc => (
                   <tr key={acc.accesorio_id} className={!acc.activo ? 'row-inactiva' : ''}>
-                    <td><span className="sku-badge">{acc.sku}</span></td>
+                    <td>{acc.accesorio_id}</td>
                     <td>{acc.nombre}</td>
                     <td>${acc.precio.toLocaleString()}</td>
                     <td>{acc.tipo_id    ? nombreTipo(acc.tipo_id)       : '—'}</td>
