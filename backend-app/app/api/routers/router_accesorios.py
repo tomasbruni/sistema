@@ -308,6 +308,39 @@ def crear_accesorio(
         raise HTTPException(status_code=500, detail=f"Error al crear accesorio: {str(e)}")
 
 
+@router.get("/con-stock")
+def listar_accesorios_con_stock(
+    buscar: Optional[str] = "",
+    local_id: Optional[int] = None,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(get_current_user)
+):
+    statement = select(Accesorio).where(Accesorio.activo == True).limit(100)  # type: ignore
+    if buscar:
+        statement = statement.where(Accesorio.nombre.ilike(f"%{buscar}%"))  # type: ignore
+
+    accesorios = session.exec(statement).all()
+
+    result = []
+    for a in accesorios:
+        stock = 0
+        if local_id is not None:
+            stock_row = session.exec(
+                select(StockAccesorio).where(
+                    StockAccesorio.accesorio_id == a.accesorio_id,
+                    StockAccesorio.local_id == local_id,
+                )
+            ).first()
+            stock = stock_row.cantidad if stock_row else 0
+        result.append({
+            "accesorio_id": a.accesorio_id,
+            "nombre": a.nombre,
+            "precio": a.precio,
+            "stock": stock,
+        })
+    return result
+
+
 @router.get("/{accesorio_id}")
 def obtener_accesorio(
     accesorio_id: int,

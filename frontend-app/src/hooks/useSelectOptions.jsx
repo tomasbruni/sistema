@@ -23,6 +23,14 @@ function useSelectOptions(names) {
         _raw: a,
       })))
     }
+    else if (name === "accesoriosConStock") {
+      data = await api.listarAccesoriosConStock({ buscar: termino, local_id })
+      setOption("accesoriosConStock", data.map(a => ({
+        value: a.accesorio_id,
+        label: `${a.nombre} — $${a.precio.toLocaleString('es-AR')}`,
+        _raw: a,
+      })))
+    }
     else if (name === "tipos") {
       data = await api.listarTipos({ buscar: termino })
       setOption("tipos", data.map(t => ({ value: t.tipo_id, label: t.nombre })))
