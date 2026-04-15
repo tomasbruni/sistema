@@ -59,6 +59,38 @@ export default function StockPage() {
           useSelectOptions(['accesorios','tipos', 'subtipos'])
  
   const [loadingExport, setLoadingExport] = useState(false)
+
+  // ── Panel de exportación por exclusión ────────────────────────────────────
+  const [panelExportAbierto, setPanelExportAbierto] = useState(false)
+  const [tiposExcluidos, setTiposExcluidos]         = useState([]) // array de tipo_id
+  const [localExportId, setLocalExportId]           = useState(null)
+  const [loadingExportExclusion, setLoadingExportExclusion] = useState(false)
+
+  const toggleTipoExcluido = (tipoId) => {
+    setTiposExcluidos(prev =>
+      prev.includes(tipoId) ? prev.filter(id => id !== tipoId) : [...prev, tipoId]
+    )
+  }
+
+  const handleExportarPorExclusion = async () => {
+    setLoadingExportExclusion(true)
+    try {
+      const blob = await api.exportarStockPorExclusion({
+        excluir_tipo_ids: tiposExcluidos.length > 0 ? tiposExcluidos.join(',') : null,
+        local_id: localExportId,
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'stock.xlsx'
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      mostrarAlerta('error', `Error al exportar: ${err.message}`)
+    } finally {
+      setLoadingExportExclusion(false)
+    }
+  }
  
   // auth
   const { rol } = useAuth()
@@ -502,14 +534,73 @@ export default function StockPage() {
                   value={busqueda}
                   onChange={handleBusqueda}
                 />
+                {rol === 'admin' &&
                 <button
                   className="btn btn-export"
                   onClick={handleExportar}
                   disabled={loadingExport}
                 >
-                  {loadingExport ? 'Exportando...' : '⬇ Exportar Excel'}
+                  {loadingExport ? 'Exportando...' : '⬇ Exportar Excel con filtros'}
                 </button>
+                }
+                {rol === 'admin' &&
+                <button
+                  className="btn btn-export"
+                  onClick={() => setPanelExportAbierto(p => !p)}
+                >
+                  {panelExportAbierto ? '✕ Exportar con exclusiones' : '⬇ Exportar con exclusiones'}
+                </button>
+                }
               </div>
+
+              {/* ── Panel exportación por exclusión ── */}
+              {panelExportAbierto && rol === 'admin' && (
+                <div className="form-card">
+                  <h3>Exportar listado de stock</h3>
+                  <div className="form-row">
+                    {locales.length > 0 && (
+                      <div className="form-group">
+                        <label>Local</label>
+                        <select value={localExportId ?? ''} onChange={e => setLocalExportId(e.target.value ? parseInt(e.target.value) : null)}>
+                          <option value="">Todos los locales</option>
+                          {locales.map(l => (
+                            <option key={l.local_id} value={l.local_id}>{l.nombre}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {tiposFiltro.length > 0 && (
+                    <div className="form-group">
+                      <label>Excluir tipos</label>
+                      <div className="filtros-chips">
+                        {tiposFiltro.map(t => (
+                          <button
+                            key={t.value}
+                            type="button"
+                            className={`filtro-chip ${tiposExcluidos.includes(t.value) ? 'filtro-chip-activo' : ''}`}
+                            onClick={() => toggleTipoExcluido(t.value)}
+                          >
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+                      {tiposExcluidos.length > 0 && (
+                        <span className="field-hint">Se excluirán {tiposExcluidos.length} tipo(s) del Excel.</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="form-actions">
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleExportarPorExclusion}
+                      disabled={loadingExportExclusion}
+                    >
+                      {loadingExportExclusion ? 'Exportando...' : '⬇ Descargar Excel'}
+                    </button>
+                  </div>
+                </div>
+              )}
  
               <div className="filtros-panel">
                 <span className="filtros-label">Filtrar por:</span>
