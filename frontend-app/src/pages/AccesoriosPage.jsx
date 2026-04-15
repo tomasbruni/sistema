@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import './AccesoriosPage.css'
 import SearchableSelect from '../components/SearchableSelect/SearchableSelect'
 import { api } from '../api/api'
@@ -39,6 +39,7 @@ export default function AccesoriosPage() {
   const [mostrarForm, setMostrarForm]     = useState(false)
   const [loading, setLoading]             = useState(false)
   const [modalNuevo, setModalNuevo]       = useState(null) // 'tipo' | 'subtipo' | null
+  const nombreRef = useRef(null)
 
   const { options, setOption, buscadorSelect } =
     useSelectOptions(['tipos', 'subtipos', 'marcas', 'marcasCelulares', 'modelos'])
@@ -176,7 +177,8 @@ export default function AccesoriosPage() {
         await api.crearAccesorio(body)
         mostrarAlerta('success', 'Accesorio creado correctamente.')
         refetch()
-        cancelar()
+        setForm(prev => ({ ...prev, nombre: '', precio: '' }))
+        setTimeout(() => nombreRef.current?.focus(), 0)
       }
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -236,7 +238,7 @@ export default function AccesoriosPage() {
             <div className="form-row">
               <div className="form-group">
                 <label>Nombre *</label>
-                <input name="nombre" value={form.nombre} onChange={handleChange} required placeholder="Ej: Funda iPhone 15" />
+                <input ref={nombreRef} name="nombre" value={form.nombre} onChange={handleChange} required placeholder="Ej: Funda iPhone 15" />
               </div>
               <div className="form-group">
                 <label>Precio *</label>

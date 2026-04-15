@@ -297,6 +297,13 @@ export const api = {
         return res.blob()
       }),
 
+  exportarStockPorExclusion: ({ excluir_tipo_ids = null, local_id = null } = {}) =>
+    authFetch(`${BASE_URL}/stock/export-por-exclusion?${buildParams({ excluir_tipo_ids, local_id })}`)
+      .then(res => {
+        if (!res.ok) throw new Error(`Error ${res.status}`)
+        return res.blob()
+      }),
+
   // Reemplaza a ingresoEgreso para el flujo de ingreso
   ingresarLote: (body) =>
     authFetch(`${BASE_URL}/stock/ingresar-lote`, {

@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
+from datetime import date
 
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 
@@ -64,6 +65,15 @@ def exportar_stock(
 
     resultados = session.exec(statement).all()
 
+    nombre_local = "todos"
+    if local_id is not None:
+        local_obj = session.get(Local, local_id)
+        if local_obj:
+            nombre_local = local_obj.nombre.lower().replace(" ", "_")
+
+    hoy = date.today().strftime("%Y%m%d")
+    filename = f"stock_{nombre_local}_{hoy}.xlsx"
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Stock" #type: ignore
@@ -99,7 +109,83 @@ def exportar_stock(
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=stock.xlsx"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/export-por-exclusion")
+def exportar_stock_por_exclusion(
+    excluir_tipo_ids: Optional[str] = None,
+    local_id: Optional[int] = None,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin)
+):
+    """Exporta todo el stock activo excluyendo los tipos indicados."""
+    excluir_ids: list[int] = []
+    if excluir_tipo_ids:
+        try:
+            excluir_ids = [int(x) for x in excluir_tipo_ids.split(",") if x.strip()]
+        except ValueError:
+            pass
+
+    statement = (
+        select(StockAccesorio, Accesorio, Local)
+        .join(Accesorio, StockAccesorio.accesorio_id == Accesorio.accesorio_id)  # type: ignore
+        .join(Local, StockAccesorio.local_id == Local.local_id)  # type: ignore
+        .where(Accesorio.activo == True)  # type: ignore
+    )
+
+    if local_id is not None:
+        statement = statement.where(StockAccesorio.local_id == local_id)
+    if excluir_ids:
+        statement = statement.where(Accesorio.tipo_id.notin_(excluir_ids))  # type: ignore
+
+    resultados = session.exec(statement).all()
+
+    nombre_local = "todos"
+    if local_id is not None:
+        local_obj = session.get(Local, local_id)
+        if local_obj:
+            nombre_local = local_obj.nombre.lower().replace(" ", "_")
+
+    hoy = date.today().strftime("%Y%m%d")
+    filename = f"stock_{nombre_local}_{hoy}.xlsx"
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Stock"  # type: ignore
+
+    header_font  = Font(bold=True, color="FFFFFF")
+    header_fill  = PatternFill(fill_type="solid", fgColor="1A1A2E")
+    header_align = Alignment(horizontal="center")
+
+    columnas = ["ID", "Accesorio", "Local", "Cantidad"]
+    for col_idx, titulo in enumerate(columnas, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=titulo)  # type: ignore
+        cell.font      = header_font
+        cell.fill      = header_fill
+        cell.alignment = header_align
+
+    for stock, accesorio, local in resultados:
+        ws.append([  # type: ignore
+            accesorio.accesorio_id,
+            accesorio.nombre,
+            local.nombre,
+            stock.cantidad,
+        ])
+
+    anchos = {"A": 14, "B": 40, "C": 20, "D": 12}
+    for col_letra, ancho in anchos.items():
+        ws.column_dimensions[col_letra].width = ancho  # type: ignore
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 
