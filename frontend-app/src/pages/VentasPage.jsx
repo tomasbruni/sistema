@@ -51,7 +51,7 @@ export default function VentasPage() {
   const [formChipPrecio, setFormChipPrecio]   = useState('')
 
   // Opciones de los SearchableSelect via hook compartido
-  const { options, buscadorSelect } = useSelectOptions(['accesorios', 'celulares', 'chips'])
+  const { options, buscadorSelect } = useSelectOptions(['accesoriosConStock', 'celulares', 'chips'])
 
   // ── Creación: pago ────────────────────────────────────────────────────────
   const [medioPago, setMedioPago]           = useState('efectivo') // 'efectivo' | 'electronico' | 'ambos'
@@ -236,7 +236,7 @@ export default function VentasPage() {
     cerrarTodos()
     setFormAccAbierto(true)
     setFormAccId(null); setFormAccData(null); setFormAccPrecio(''); setFormAccCantidad(1)
-    buscadorSelect('accesorios', '')
+    buscadorSelect('accesoriosConStock', '', { local_id: localId })
   }
   const cerrarFormAcc = () => {
     setFormAccAbierto(false)
@@ -271,7 +271,7 @@ export default function VentasPage() {
   // ─── Selección en cada SearchableSelect ──────────────────────────────────
   const handleSeleccionAcc = (id) => {
     setFormAccId(id)
-    const found = options.accesorios.find(o => o.value === id)
+    const found = options.accesoriosConStock.find(o => o.value === id)
     setFormAccData(found?._raw ?? null)
     setFormAccPrecio(found?._raw?.precio ?? '')
   }
@@ -642,16 +642,21 @@ export default function VentasPage() {
               <h3>Agregar accesorio</h3>
               <div className="form-row">
                 <div className="form-group" style={{ flex: 2 }}>
-                  {/* cambiar buscador select para que en una query se traiga el stock disponible tambien */}
                   <label>Accesorio *</label>
                   <SearchableSelect
-                    options={options.accesorios}
+                    options={options.accesoriosConStock}
                     value={formAccId}
-                    onChange={handleSeleccionAcc} 
-                    onSearch={(t) => buscadorSelect('accesorios', t)}
+                    onChange={handleSeleccionAcc}
+                    onSearch={(t) => buscadorSelect('accesoriosConStock', t, { local_id: localId })}
                     placeholder="Buscar por nombre..."
                   />
                 </div>
+                {formAccData && (
+                  <div className="form-group" style={{ maxWidth: 110 }}>
+                    <label>Stock disponible</label>
+                    <input type="text" readOnly value={formAccData.stock ?? 0} />
+                  </div>
+                )}
                 <div className="form-group">
                   <label>Precio unitario *</label>
                   <input
@@ -760,7 +765,7 @@ export default function VentasPage() {
                   <tbody>
                     {productos.map(p => (
                       <tr key={p._key}>
-                        <td><span className={`tipo-badge tipo-${p.tipo}`}>{p.tipo}</span></td>
+                        <td><span className={`tipo-badge tipo-${p.tipo}`}>{p.tipo === 'accesorio' ? 'acc' : p.tipo === 'celular' ? 'cel' : 'chip'}</span></td>
                         <td>{p.label}</td>
                         <td>
                           {p.tipo === 'accesorio' ? (

@@ -167,6 +167,9 @@ export const api = {
   listarAccesorios: ({ skip = 0, limit = LIMIT, buscar = '', tipo_id = null, subtipo_id = null, marca_celular_id = null, modelo_celular_id = null, activo = true } = {}) =>
     authFetch(`${BASE_URL}/accesorios/?${buildParams({ skip, limit, buscar, tipo_id, subtipo_id, marca_celular_id, modelo_celular_id, activo })}`).then(handleResponse),
 
+  listarAccesoriosConStock: ({ buscar = '', local_id = null } = {}) =>
+    authFetch(`${BASE_URL}/accesorios/con-stock?${buildParams({ buscar, local_id })}`).then(handleResponse),
+
   listarTipos: ({ buscar = '', activo = true } = {}) =>
     authFetch(`${BASE_URL}/tipos-accesorios/?${buildParams({ limit: 100, buscar, activo })}`).then(handleResponse),
 
