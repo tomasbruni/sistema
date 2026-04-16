@@ -725,7 +725,7 @@ export default function VentasPage() {
                     options={options.chips}
                     value={formChipId}
                     onChange={handleSeleccionChip}
-                    onSearch={() => buscadorSelect('chips', '',  {estado: tipoOperacion === 'VENTA' ? 'DISPONIBLE' : 'VENDIDO' , local_id: localId})}
+                    onSearch={(t) => buscadorSelect('chips', t,  {estado: tipoOperacion === 'VENTA' ? 'DISPONIBLE' : 'VENDIDO' , local_id: localId})}
                     placeholder="Buscar por número de serie..."
                   />
                 </div>

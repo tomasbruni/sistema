@@ -9,7 +9,7 @@ export default function Navbar() {
     <nav className="navbar">
       <ul className="navbar-links">
         <li><NavLink to="/ventas">Ventas</NavLink></li>
-        <li><NavLink to="/reparaciones">Reparaciones</NavLink></li>
+        {/* <li><NavLink to="/reparaciones">Reparaciones</NavLink></li> */}
         <li><NavLink to="/stock">Stock</NavLink></li>
         {rol !== 'admin' && <li><NavLink to="/transferencias">Transferencias</NavLink></li>}
         {rol === 'admin' && (

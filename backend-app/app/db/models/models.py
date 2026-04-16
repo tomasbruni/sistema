@@ -325,10 +325,10 @@ class Reparacion(SQLModel, table=True):
     dni_cliente: Optional[str] = None
     mail_cliente: Optional[str] = None
     descripcion: Optional[str] = None
-    total: int
+    total: Optional[int] = None
     adelanto: int
     pago_reparador: Optional[int] = None  
-    estado: str
+    estado: str # REVISION | CANCELADO | EN_REPARACION | ENTREGADO
     fecha_ingreso: Optional[datetime] = Field(default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
     )

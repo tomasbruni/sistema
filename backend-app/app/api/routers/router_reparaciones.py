@@ -26,7 +26,6 @@ router = APIRouter(
     tags=["Reparaciones"],
 )
 
-
 # ── Inputs para transiciones ──────────────────────────────────────────────────
 
 class CambioPrecioInput(SQLModel):
@@ -41,6 +40,11 @@ class TransicionInput(SQLModel):
     fecha: Optional[date] = None
     usuario_id: Optional[int] = None
 
+
+class CancelarInput(SQLModel):
+    observaciones: Optional[str] = None
+    fecha: Optional[date] = None
+    usuario_id: Optional[int] = None
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -115,13 +119,17 @@ def crear_reparacion(
     current_user: UsuarioActual = Depends(get_current_user),
 ):
     try:
-        campos = data.model_dump(exclude={"fecha_ingreso", "usuario_id"})
+        campos = data.model_dump(exclude={"estado_inicial", "fecha_ingreso", "usuario_id"})
         usuario_id = (
             data.usuario_id
             if current_user.rol == "admin" and data.usuario_id is not None
             else current_user.usuario_id
         )
-        nueva = Reparacion(**campos, estado="EN_REPARACION", usuario_id=usuario_id)
+
+        if (data.estado_inicial) not in ESTADOS_VALIDOS_CREACION:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Estados validos {ESTADOS_VALIDOS_CREACION}")
+
+        nueva = Reparacion(**campos, estado=data.estado_inicial, usuario_id=usuario_id)
         if current_user.rol == "admin" and data.fecha_ingreso is not None:
             nueva.fecha_ingreso = start_of_day(data.fecha_ingreso)
         session.add(nueva)
@@ -172,7 +180,7 @@ def cambio_de_precio(
     reparacion = _get_or_404(reparacion_id, session)
     try:
         monto_anterior = reparacion.total
-        monto_nuevo = monto_anterior + data.monto_agregado
+        monto_nuevo = monto_anterior + data.monto_agregado #type: ignore
         reparacion.total = monto_nuevo
 
         usuario_id = (
@@ -199,7 +207,7 @@ def cambio_de_precio(
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
-
+    
 
 @router.post("/{reparacion_id}/entregar")
 def entregar(
@@ -225,7 +233,7 @@ def entregar(
             tipo_movimiento="CAMBIO_ESTADO",
             estado_anterior=estado_anterior,
             estado_nuevo="ENTREGADO",
-            monto_entrega_recibido=reparacion.total - reparacion.adelanto,
+            monto_entrega_recibido=reparacion.total - reparacion.adelanto, #type: ignore
             usuario_id=usuario_id,
             observaciones=data.observaciones,
         )
