@@ -32,7 +32,11 @@ export default function TransferenciasPage() {
 
   useEffect(() => {
     fetchTransferencias(0)
-    api.listarLocales().then(setLocales).catch(() => {})
+    if (rol === 'admin') {
+      api.listarLocales().then(setLocales).catch(() => {})
+    } else {
+      api.listarLocales({tipo: 'LOCAL'}).then(setLocales).catch(() => {})
+    } 
     if (rol === 'admin') api.listarUsuarios().then(setUsuarios).catch(() => {})
   }, [])
 
