@@ -164,14 +164,15 @@ class DetalleChipCreate(SQLModel):
 # REPARACIONES
 # =====================
 class ReparacionCreate(SQLModel):
+    estado_inicial: str
     celular: str
     nombre_cliente: str
     telefono_cliente: str
     dni_cliente: Optional[str] = None
     mail_cliente: Optional[str] = None
     descripcion: Optional[str] = None
-    total: int
-    adelanto: int
+    total: Optional[int] # si se manda el celular a revision, es desconocido
+    adelanto: int # adelanto o revision
     local_id: int
     fecha_ingreso: Optional[date] = None
     usuario_id: Optional[int] = None

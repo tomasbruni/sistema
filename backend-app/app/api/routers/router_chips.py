@@ -181,9 +181,18 @@ def crear_chip(
     """Crear un nuevo chip."""
     chip = Chip(**chip_in.model_dump())
     session.add(chip)
-    session.commit()
-    session.refresh(chip)
-    return chip
+
+    try:
+        session.commit()
+        session.refresh(chip)
+        return chip
+
+    except exc.IntegrityError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 @router.put("/{chip_id}")
@@ -196,13 +205,27 @@ def actualizar_chip(
     """Actualizar un chip."""
     chip = session.get(Chip, chip_id)
     if not chip:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chip no encontrado")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chip no encontrado"
+        )
+
     for field, value in chip_in.model_dump(exclude_unset=True).items():
         setattr(chip, field, value)
+
     session.add(chip)
-    session.commit()
-    session.refresh(chip)
-    return chip
+
+    try:
+        session.commit()
+        session.refresh(chip)
+        return chip
+
+    except exc.IntegrityError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 @router.delete("/{chip_id}")
