@@ -16,7 +16,7 @@ from app.db.models import (
 )
 from app.api.modelscreate import VentaCreate
 from app.api.deps import get_current_user, require_admin, UsuarioActual
-from app.api.funciones.fechas import start_of_day
+from app.api.funciones.fechas import start_of_day, end_of_day
 
 router = APIRouter(
     prefix="/ventas",
@@ -553,6 +553,9 @@ def listar_ventas(
     skip: int = 0,
     limit: int = 20,
     local_id: Optional[int] = None,
+    usuario_id: Optional[int] = None,
+    fecha: Optional[date] = None,
+    current_user = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
     """
@@ -560,18 +563,23 @@ def listar_ventas(
     Devuelve fecha, tipo, monto_total y pagos de cada venta.
     Para ver los detalles de productos usar GET /ventas/{venta_id}.
     """
-
     # 🔹 Query base
-    query = select(Venta)
-
-    # 🔹 Filtro opcional
+    statement = select(Venta)
+    if current_user.rol != "admin":
+        statement = statement.where(Venta.usuario_id == current_user.usuario_id)
+    elif usuario_id is not None:
+        statement = statement.where(Venta.usuario_id == usuario_id)
     if local_id is not None:
-        query = query.where(Venta.local_id == local_id)
-
+        statement = statement.where(Venta.local_id == local_id)
+    if fecha is not None:
+        statement = statement.where(
+            Venta.fecha_ingreso >= start_of_day(fecha), #type: ignore
+            Venta.fecha_ingreso <= end_of_day(fecha), #type: ignore
+        )
     # 🔹 Orden + paginación
-    query = query.order_by(Venta.fecha_ingreso.desc()).offset(skip).limit(limit)  # type: ignore
+    statement = statement.order_by(Venta.fecha_ingreso.desc()).offset(skip).limit(limit)  # type: ignore
 
-    ventas = session.exec(query).all()
+    ventas = session.exec(statement).all()
 
     resultado = []
     for venta in ventas:
