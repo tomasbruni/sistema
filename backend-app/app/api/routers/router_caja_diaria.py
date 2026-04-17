@@ -334,94 +334,94 @@ def _build_pdf(
     ]))
     story.append(neto_row)
 
-    # ── Reparaciones ──
-    story.append(PageBreak())
-    story.append(_enc_table())
-    story.append(Spacer(1, 6))
-    story.append(Paragraph("REPARACIONES", seccion))
+    # # ── Reparaciones ──
+    # story.append(PageBreak())
+    # story.append(_enc_table())
+    # story.append(Spacer(1, 6))
+    # story.append(Paragraph("REPARACIONES", seccion))
 
-    rep_ef = sum(r.adelanto for r in reparaciones_creadas)
-    rep_ef += sum(
-        mov.monto_entrega_recibido
-        for mov, _ in movimientos_rep
-        if mov.estado_nuevo == "ENTREGADO" and mov.monto_entrega_recibido
-    )
-    ef_total += rep_ef
+    # rep_ef = sum(r.adelanto for r in reparaciones_creadas)
+    # rep_ef += sum(
+    #     mov.monto_entrega_recibido
+    #     for mov, _ in movimientos_rep
+    #     if mov.estado_nuevo == "ENTREGADO" and mov.monto_entrega_recibido
+    # )
+    # ef_total += rep_ef
 
-    hay_movimientos_rep = reparaciones_creadas or movimientos_rep
-    if not hay_movimientos_rep:
-        story.append(Paragraph("Sin movimientos de reparaciones en el período.", styles["Normal"]))
-    else:
-        rep_col_widths = [W*0.05, W*0.15, W*0.23, W*0.22, W*0.17, W*0.18]
-        rep_header = [Paragraph(t, header_cel) for t in
-            ["ID", "Tipo", "Celular", "Cliente", "Movimiento", "Monto cobrado"]]
-        rep_data = [rep_header]
+    # hay_movimientos_rep = reparaciones_creadas or movimientos_rep
+    # if not hay_movimientos_rep:
+    #     story.append(Paragraph("Sin movimientos de reparaciones en el período.", styles["Normal"]))
+    # else:
+    #     rep_col_widths = [W*0.05, W*0.15, W*0.23, W*0.22, W*0.17, W*0.18]
+    #     rep_header = [Paragraph(t, header_cel) for t in
+    #         ["ID", "Tipo", "Celular", "Cliente", "Movimiento", "Monto cobrado"]]
+    #     rep_data = [rep_header]
 
-        for r in reparaciones_creadas:
-            rep_data.append([
-                Paragraph(str(r.reparacion_id), cell),
-                Paragraph("CREACION", cell),
-                Paragraph(r.celular, cell),
-                Paragraph(r.nombre_cliente, cell),
-                Paragraph("Adelanto", cell),
-                Paragraph(_fmt_pesos(r.adelanto), cell_bold),
-            ])
+    #     for r in reparaciones_creadas:
+    #         rep_data.append([
+    #             Paragraph(str(r.reparacion_id), cell),
+    #             Paragraph("CREACION", cell),
+    #             Paragraph(r.celular, cell),
+    #             Paragraph(r.nombre_cliente, cell),
+    #             Paragraph("Adelanto", cell),
+    #             Paragraph(_fmt_pesos(r.adelanto), cell_bold),
+    #         ])
 
-        for mov, rep in movimientos_rep:
-            if mov.tipo_movimiento == "CAMBIO_ESTADO" and mov.estado_nuevo == "ENTREGADO":
-                tipo_label = "ENTREGA"
-                mov_label = "Saldo restante"
-                monto_str = _fmt_pesos(mov.monto_entrega_recibido) if mov.monto_entrega_recibido else "-"
-                monto_style = cell_bold
-            elif mov.tipo_movimiento == "CAMBIO_ESTADO":
-                tipo_label = "CAMBIO ESTADO"
-                mov_label = f"{mov.estado_anterior} → {mov.estado_nuevo}"
-                monto_str = "-"
-                monto_style = cell
-            else:  # CAMBIO_PRECIO
-                tipo_label = "CAMBIO PRECIO"
-                mov_label = f"{_fmt_pesos(mov.monto_total_anterior)} → {_fmt_pesos(mov.monto_total_nuevo)}" if mov.monto_total_anterior is not None else "-"
-                monto_str = "-"
-                monto_style = cell
-            rep_data.append([
-                Paragraph(str(rep.reparacion_id), cell),
-                Paragraph(tipo_label, cell),
-                Paragraph(rep.celular, cell),
-                Paragraph(rep.nombre_cliente, cell),
-                Paragraph(mov_label, cell),
-                Paragraph(monto_str, monto_style),
-            ])
+    #     for mov, rep in movimientos_rep:
+    #         if mov.tipo_movimiento == "CAMBIO_ESTADO" and mov.estado_nuevo == "ENTREGADO":
+    #             tipo_label = "ENTREGA"
+    #             mov_label = "Saldo restante"
+    #             monto_str = _fmt_pesos(mov.monto_entrega_recibido) if mov.monto_entrega_recibido else "-"
+    #             monto_style = cell_bold
+    #         elif mov.tipo_movimiento == "CAMBIO_ESTADO":
+    #             tipo_label = "CAMBIO ESTADO"
+    #             mov_label = f"{mov.estado_anterior} → {mov.estado_nuevo}"
+    #             monto_str = "-"
+    #             monto_style = cell
+    #         else:  # CAMBIO_PRECIO
+    #             tipo_label = "CAMBIO PRECIO"
+    #             mov_label = f"{_fmt_pesos(mov.monto_total_anterior)} → {_fmt_pesos(mov.monto_total_nuevo)}" if mov.monto_total_anterior is not None else "-"
+    #             monto_str = "-"
+    #             monto_style = cell
+    #         rep_data.append([
+    #             Paragraph(str(rep.reparacion_id), cell),
+    #             Paragraph(tipo_label, cell),
+    #             Paragraph(rep.celular, cell),
+    #             Paragraph(rep.nombre_cliente, cell),
+    #             Paragraph(mov_label, cell),
+    #             Paragraph(monto_str, monto_style),
+    #         ])
 
-        rep_style = [
-            ("FONTSIZE",      (0,0),(-1,-1),7.5),
-            ("GRID",          (0,0),(-1,-1),0.25, GRID_COLOR),
-            ("LINEBELOW",     (0,0),(-1,0), 0.75, colors.black),
-            ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
-            ("VALIGN",        (0,0),(-1,-1),"TOP"),
-            ("LEFTPADDING",   (0,0),(-1,-1),3),
-            ("RIGHTPADDING",  (0,0),(-1,-1),3),
-            ("TOPPADDING",    (0,0),(-1,-1),2),
-            ("BOTTOMPADDING", (0,0),(-1,-1),2),
-        ]
-        rep_tbl = Table(rep_data, colWidths=rep_col_widths, repeatRows=1)
-        rep_tbl.setStyle(TableStyle(rep_style))
-        story.append(rep_tbl)
+    #     rep_style = [
+    #         ("FONTSIZE",      (0,0),(-1,-1),7.5),
+    #         ("GRID",          (0,0),(-1,-1),0.25, GRID_COLOR),
+    #         ("LINEBELOW",     (0,0),(-1,0), 0.75, colors.black),
+    #         ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
+    #         ("VALIGN",        (0,0),(-1,-1),"TOP"),
+    #         ("LEFTPADDING",   (0,0),(-1,-1),3),
+    #         ("RIGHTPADDING",  (0,0),(-1,-1),3),
+    #         ("TOPPADDING",    (0,0),(-1,-1),2),
+    #         ("BOTTOMPADDING", (0,0),(-1,-1),2),
+    #     ]
+    #     rep_tbl = Table(rep_data, colWidths=rep_col_widths, repeatRows=1)
+    #     rep_tbl.setStyle(TableStyle(rep_style))
+    #     story.append(rep_tbl)
 
-    story.append(Spacer(1, 4))
-    rep_subtotal = Table(
-        [[Paragraph("TOTAL REPARACIONES (efectivo)", bold), Paragraph(_fmt_pesos(rep_ef), bold)]],
-        colWidths=[W*0.82, W*0.18],
-    )
-    rep_subtotal.setStyle(TableStyle([
-        ("FONTSIZE",      (0,0),(-1,-1),9),
-        ("ALIGN",         (1,0),(1,-1),"RIGHT"),
-        ("TOPPADDING",    (0,0),(-1,-1),2),
-        ("BOTTOMPADDING", (0,0),(-1,-1),2),
-        ("LEFTPADDING",   (0,0),(-1,-1),4),
-        ("RIGHTPADDING",  (0,0),(-1,-1),4),
-        ("LINEABOVE",     (0,0),(-1,-1),0.75,colors.black),
-    ]))
-    story.append(rep_subtotal)
+    # story.append(Spacer(1, 4))
+    # rep_subtotal = Table(
+    #     [[Paragraph("TOTAL REPARACIONES (efectivo)", bold), Paragraph(_fmt_pesos(rep_ef), bold)]],
+    #     colWidths=[W*0.82, W*0.18],
+    # )
+    # rep_subtotal.setStyle(TableStyle([
+    #     ("FONTSIZE",      (0,0),(-1,-1),9),
+    #     ("ALIGN",         (1,0),(1,-1),"RIGHT"),
+    #     ("TOPPADDING",    (0,0),(-1,-1),2),
+    #     ("BOTTOMPADDING", (0,0),(-1,-1),2),
+    #     ("LEFTPADDING",   (0,0),(-1,-1),4),
+    #     ("RIGHTPADDING",  (0,0),(-1,-1),4),
+    #     ("LINEABOVE",     (0,0),(-1,-1),0.75,colors.black),
+    # ]))
+    # story.append(rep_subtotal)
 
     # ── Egresos ──
     story.append(Spacer(1, 10))
@@ -675,6 +675,7 @@ def caja_diaria_pdf(
             select(SobranteFaltante)
             .where(SobranteFaltante.fecha == fecha)
             .where(SobranteFaltante.local_id == local_id)
+            .where(SobranteFaltante.usuario_id == usuario_id)
         ).first()
         if sf:
             sf_sobrante = sf.sobrante

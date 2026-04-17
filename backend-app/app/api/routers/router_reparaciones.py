@@ -45,6 +45,22 @@ class CancelarInput(SQLModel):
     observaciones: Optional[str] = None
     fecha: Optional[date] = None
     usuario_id: Optional[int] = None
+    monto_a_devolver: Optional[int] = None
+
+
+class AceptarInput(SQLModel):
+    pago_parcial_agregado: int 
+    total_final: int
+    fecha: Optional[date] = None
+    usuario_id: Optional[int] = None
+    observaciones: Optional[str] = None
+
+class CambioPagoParcial(SQLModel):
+    nuevo_monto: int
+    observaciones: Optional[str] = None
+    fecha: Optional[date] = None
+    usuario_id: Optional[int] = None
+
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +69,8 @@ def _get_or_404(reparacion_id: int, session: Session) -> Reparacion:
     if not reparacion:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reparación no encontrada")
     return reparacion
+
+ESTADOS_VALIDOS_CREACION = ["EN_REVISION", "EN_REPARACION"]
 
 
 # ── GET ───────────────────────────────────────────────────────────────────────
@@ -119,6 +137,18 @@ def crear_reparacion(
     current_user: UsuarioActual = Depends(get_current_user),
 ):
     try:
+        if data.estado_inicial not in ESTADOS_VALIDOS_CREACION:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Estados validos {ESTADOS_VALIDOS_CREACION}")
+
+        if data.estado_inicial == "EN_REPARACION":
+            if data.total is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="EN_REPARACION requiere que se especifique el total")
+            if data.pago_parcial > data.total:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El pago_parcial no puede superar el total")
+        elif data.estado_inicial == "EN_REVISION":
+            if data.total is not None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="EN_REVISION no debe tener total (se desconoce al momento de la revisión)")
+
         campos = data.model_dump(exclude={"estado_inicial", "fecha_ingreso", "usuario_id"})
         usuario_id = (
             data.usuario_id
@@ -126,12 +156,10 @@ def crear_reparacion(
             else current_user.usuario_id
         )
 
-        if (data.estado_inicial) not in ESTADOS_VALIDOS_CREACION:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Estados validos {ESTADOS_VALIDOS_CREACION}")
-
         nueva = Reparacion(**campos, estado=data.estado_inicial, usuario_id=usuario_id)
         if current_user.rol == "admin" and data.fecha_ingreso is not None:
             nueva.fecha_ingreso = start_of_day(data.fecha_ingreso)
+
         session.add(nueva)
         session.commit()
         session.refresh(nueva)
@@ -193,8 +221,8 @@ def cambio_de_precio(
             tipo_movimiento="CAMBIO_PRECIO",
             estado_anterior=reparacion.estado,
             estado_nuevo=reparacion.estado,
-            monto_total_anterior=monto_anterior,
-            monto_total_nuevo=monto_nuevo,
+            monto_anterior=monto_anterior,
+            monto_nuevo=monto_nuevo,
             usuario_id=usuario_id,
             observaciones=data.observaciones,
         )
@@ -208,6 +236,53 @@ def cambio_de_precio(
         session.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
     
+
+
+@router.post("/{reparacion_id}/cambio-pago-parcial")
+def cambio_de_pago_parcial(
+    reparacion_id: int,
+    data: CambioPagoParcial,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(get_current_user),
+):
+    # SI LA VENDEDORA SE EQUIVOCA, PUEDE MODIFICAR EL PAGO PARCIAL RECIBIDO,
+    # PERO GENERA UN MOVIMIENTO DE CAMBIO PARA REPORTE
+    reparacion = _get_or_404(reparacion_id, session)
+    if data.nuevo_monto < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
+                            detail=f"El monto es menor a 0")
+    if (reparacion.total is not None) and data.nuevo_monto > reparacion.total:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
+                                detail=f"El monto es mayor al total")
+ 
+    try:
+        usuario_id = (
+            data.usuario_id
+            if current_user.rol == "admin" and data.usuario_id is not None
+            else current_user.usuario_id
+        )
+        pago_parcial_anterior = reparacion.pago_parcial
+        reparacion.pago_parcial = data.nuevo_monto
+        movimiento = MovimientoReparacion(
+            reparacion_id=reparacion_id,
+            tipo_movimiento="CAMBIO_PAGO_PARCIAL",
+            estado_anterior=reparacion.estado,
+            estado_nuevo=reparacion.estado,
+            monto_anterior=pago_parcial_anterior,
+            monto_nuevo=data.nuevo_monto,
+            usuario_id=usuario_id,
+            observaciones=data.observaciones,
+        )
+        if current_user.rol == "admin" and data.fecha is not None:
+            movimiento.fecha = start_of_day(data.fecha)
+        session.add(movimiento)
+        session.commit()
+        session.refresh(reparacion)
+        return {"mensaje": "Pago actualizado exitosamente", "reparacion": reparacion}
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
 
 @router.post("/{reparacion_id}/entregar")
 def entregar(
@@ -233,9 +308,112 @@ def entregar(
             tipo_movimiento="CAMBIO_ESTADO",
             estado_anterior=estado_anterior,
             estado_nuevo="ENTREGADO",
-            monto_entrega_recibido=reparacion.total - reparacion.adelanto, #type: ignore
+            monto_entrega_recibido=reparacion.total - reparacion.pago_parcial, #type: ignore
             usuario_id=usuario_id,
             observaciones=data.observaciones,
+        )
+        if current_user.rol == "admin" and data.fecha is not None:
+            movimiento.fecha = start_of_day(data.fecha)
+        session.add(movimiento)
+        session.commit()
+        session.refresh(reparacion)
+        return {"mensaje": "Reparación entregada exitosamente", "reparacion": reparacion}
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
+
+@router.post("/{reparacion_id}/aceptar")
+def aceptar(
+    reparacion_id: int,
+    data: AceptarInput,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(get_current_user),
+): 
+    reparacion = _get_or_404(reparacion_id, session)
+    if reparacion.estado != "EN_REVISION":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Solo se puede aceptar una reparación en estado EN_REVISION (actual: {reparacion.estado})")
+    try:
+        # SE ACEPTA UNA REPARACION EN REVISION, SE AGREGA AL pago_parcial LA PLATA RECIBIDA,
+        # SE ESTABLECE EL TOTAL FINAL
+        # pago_parcial SE TOMA COMO PAGO PARCIAL, PUEDE AGREGAR MAS O DEJAR LO QUE YA HABIA PUESTO EN LA REVISION
+        reparacion.estado = "EN_REPARACION"
+        reparacion.total = data.total_final
+
+        if data.pago_parcial_agregado is None:
+            pago_parcial_agregado_final = 0
+        else:
+            pago_parcial_agregado_final = data.pago_parcial_agregado
+
+        reparacion.pago_parcial += pago_parcial_agregado_final
+        if reparacion.pago_parcial > reparacion.total:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
+                                detail=f"El pago_parcial es mayor al total")
+        
+        usuario_id = (
+            data.usuario_id
+            if current_user.rol == "admin" and data.usuario_id is not None
+            else current_user.usuario_id
+        )
+
+        # MOVIMIENTO REPORTANDO CUANTO DINERO SE RECIBIO, SUMANDOLO A LO QUE YA SE HABIA RECIBIDO DE LA REVISION
+        movimiento = MovimientoReparacion(
+            reparacion_id=reparacion_id,
+            tipo_movimiento="CAMBIO_ESTADO",
+            estado_anterior=reparacion.estado,
+            estado_nuevo="EN_REPARACION",
+            pago_parcial_agregado=pago_parcial_agregado_final, #type: ignore
+            usuario_id=usuario_id,
+            observaciones=data.observaciones,
+        )
+
+        if current_user.rol == "admin" and data.fecha is not None:
+            movimiento.fecha = start_of_day(data.fecha)
+
+        session.add(movimiento)
+        session.commit()
+        session.refresh(reparacion)
+        return {"mensaje": "Reparación entregada exitosamente", "reparacion": reparacion}
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
+
+@router.post("/{reparacion_id}/cancelar")
+def cancelar(
+    reparacion_id: int,
+    data: CancelarInput,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(get_current_user),
+):
+    reparacion = _get_or_404(reparacion_id, session)
+    if reparacion.estado not in ESTADOS_VALIDOS_CREACION:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Solo se puede entregar una reparación en estado EN_REPARACION o EN_REVISION (actual: {reparacion.estado})")
+    try:
+        estado_anterior = reparacion.estado
+        reparacion.estado = "CANCELADO"
+
+        usuario_id = (
+            data.usuario_id
+            if current_user.rol == "admin" and data.usuario_id is not None
+            else current_user.usuario_id
+        )
+        if data.monto_a_devolver is None:
+            monto_a_devolver_final = 0
+        else:
+            if data.monto_a_devolver > reparacion.pago_parcial:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail="El monto a devolver tiene que ser menor al pago_parcial")
+            monto_a_devolver_final = data.monto_a_devolver
+
+        movimiento = MovimientoReparacion(
+            reparacion_id=reparacion_id,
+            tipo_movimiento="CAMBIO_ESTADO",
+            estado_anterior=estado_anterior,
+            estado_nuevo="CANCELADO",
+            usuario_id=usuario_id,
+            observaciones=data.observaciones,
+            monto_a_devolver=monto_a_devolver_final
         )
         if current_user.rol == "admin" and data.fecha is not None:
             movimiento.fecha = start_of_day(data.fecha)
@@ -324,7 +502,81 @@ def entregar_garantia(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
 
 
-# ── PDF: Certificado de recepción ─────────────────────────────────────────────
+# ── PDF helpers ───────────────────────────────────────────────────────────────
+
+def _pdf_styles():
+    styles = getSampleStyleSheet()
+    def style(name, **kw):
+        return ParagraphStyle(name, parent=styles["Normal"], **kw)
+    return {
+        "titulo":   style("titulo",  fontSize=13, fontName="Helvetica-Bold", alignment=1, spaceAfter=2),
+        "subtitulo":style("sub",     fontSize=9,  alignment=1, spaceAfter=6),
+        "bold9":    style("b9",      fontSize=9,  fontName="Helvetica-Bold"),
+        "normal9":  style("n9",      fontSize=9,  leading=12),
+        "small8":   style("s8",      fontSize=8,  leading=10),
+        "legal":    style("legal",   fontSize=7.5, leading=10, alignment=4),
+        "aviso":    style("aviso",   fontSize=9,  fontName="Helvetica-Bold", alignment=1),
+        "punteo":   style("punt",    fontSize=9,  leading=13),
+    }
+
+
+def _tabla_style():
+    return TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
+        ("BOX",           (0, 0), (-1, -1), 0.5, colors.black),
+        ("INNERGRID",     (0, 0), (-1, -1), 0.25, colors.HexColor("#AAAAAA")),
+    ])
+
+
+def _bloque_patron(W, s):
+    PATRON_IMG = "static/images/pattern-lock-icon.jpg"
+    img_size = 28*mm
+    patron_img = Image(PATRON_IMG, width=img_size, height=img_size)
+    patron_data = [[
+        Paragraph("<b>Patrón de desbloqueo:</b>", s["bold9"]),
+        patron_img,
+        Table(
+            [
+                [Paragraph("<b>Código de desbloqueo:</b>", s["bold9"])],
+                [Paragraph("_" * 38, s["normal9"])],
+                [Spacer(1, 3*mm)],
+                [Paragraph("<b>(completar a mano)</b>", s["small8"])],
+            ],
+            colWidths=[W * 0.52],
+        ),
+    ]]
+    tbl = Table(patron_data, colWidths=[W * 0.26, img_size + 4*mm, W * 0.52])
+    tbl.setStyle(TableStyle([
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("BOX",           (0, 0), (-1, -1), 0.5, colors.black),
+        ("LINEBEFORE",    (1, 0), (1, -1),  0.5, colors.black),
+        ("LINEBEFORE",    (2, 0), (2, -1),  0.5, colors.black),
+    ]))
+    return tbl
+
+
+def _bloque_firma(W, s):
+    firma_data = [
+        [Paragraph("___________________________", s["normal9"]), Paragraph("___________________________", s["normal9"])],
+        [Paragraph("Firma del cliente", s["small8"]),            Paragraph("Aclaración", s["small8"])],
+    ]
+    tbl = Table(firma_data, colWidths=[W * 0.5, W * 0.5])
+    tbl.setStyle(TableStyle([
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+    ]))
+    return tbl
+
+
+# ── PDF: Certificado de recepción (estado-consciente) ─────────────────────────
 
 @router.get("/{reparacion_id}/certificado-recepcion")
 def certificado_recepcion(
@@ -336,165 +588,94 @@ def certificado_recepcion(
     local   = session.get(Local,   rep.local_id)
     usuario = session.get(Usuario, rep.usuario_id)
 
-    fecha_str = (
-        rep.fecha_ingreso.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M")
-        if rep.fecha_ingreso else "-"
-    )
+    es_revision = rep.estado == "EN_REVISION"
+
+    fecha_str   = rep.fecha_ingreso.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M") if rep.fecha_ingreso else "-"
     local_str   = local.nombre   if local   else "-"
-    usuario_str = usuario.nombre if usuario else "-"
 
-    # ── Estilos ────────────────────────────────────────────────────────────────
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        leftMargin=18*mm, rightMargin=18*mm,
-        topMargin=14*mm, bottomMargin=14*mm,
-    )
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm, topMargin=14*mm, bottomMargin=14*mm)
     W = A4[0] - 36*mm
+    s = _pdf_styles()
 
-    styles = getSampleStyleSheet()
-    def style(name, **kw):
-        return ParagraphStyle(name, parent=styles["Normal"], **kw)
-
-    titulo   = style("titulo",  fontSize=13, fontName="Helvetica-Bold", alignment=1, spaceAfter=2)
-    subtitulo= style("sub",     fontSize=9,  alignment=1, spaceAfter=6)
-    bold9    = style("b9",      fontSize=9,  fontName="Helvetica-Bold")
-    normal9  = style("n9",      fontSize=9,  leading=12)
-    small8   = style("s8",      fontSize=8,  leading=10)
-    legal    = style("legal",   fontSize=7.5, leading=10, alignment=4)  # justify
-    aviso    = style("aviso",   fontSize=9,  fontName="Helvetica-Bold", alignment=1)
+    def fila(label, valor):
+        return [Paragraph(f"<b>{label}</b>", s["bold9"]), Paragraph(valor or "-", s["normal9"])]
 
     story = []
 
-    # ── Encabezado ─────────────────────────────────────────────────────────────
-    story.append(Paragraph("CERTIFICADO DE RECEPCIÓN DE EQUIPO", titulo))
-    story.append(Paragraph(f"N° {reparacion_id:04d}  —  {local_str}  —  {fecha_str}", subtitulo))
+    titulo_texto = "CERTIFICADO DE RECEPCIÓN — REVISIÓN TÉCNICA" if es_revision else "CERTIFICADO DE RECEPCIÓN — REPARACIÓN"
+    story.append(Paragraph(titulo_texto, s["titulo"]))
+    story.append(Paragraph(f"N° {reparacion_id:04d}  —  {local_str}  —  {fecha_str}", s["subtitulo"]))
     story.append(HRFlowable(width=W, thickness=1, color=colors.black, spaceAfter=5))
 
-    # ── Datos del cliente ──────────────────────────────────────────────────────
-    def fila(label, valor):
-        return [Paragraph(f"<b>{label}</b>", bold9), Paragraph(valor or "-", normal9)]
-
-    cliente_data = [
+    tbl_cliente = Table([
         fila("Cliente:",   rep.nombre_cliente),
         fila("Teléfono:",  rep.telefono_cliente),
         fila("DNI:",       rep.dni_cliente or "-"),
         fila("Mail:",      rep.mail_cliente or "-"),
-    ]
-    tbl_cliente = Table(cliente_data, colWidths=[W * 0.22, W * 0.78])
-    tbl_cliente.setStyle(TableStyle([
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
-        ("BOX",           (0, 0), (-1, -1), 0.5, colors.black),
-        ("INNERGRID",     (0, 0), (-1, -1), 0.25, colors.HexColor("#AAAAAA")),
-        ("BACKGROUND",    (0, 0), (0, -1),  colors.HexColor("#FFFFFF")),
-    ]))
+    ], colWidths=[W * 0.22, W * 0.78])
+    tbl_cliente.setStyle(_tabla_style())
     story.append(tbl_cliente)
     story.append(Spacer(1, 4*mm))
 
-    # ── Datos del equipo ───────────────────────────────────────────────────────
-    equipo_data = [
-        fila("Equipo:",        rep.celular),
-        fila("Descripción:",   rep.descripcion or "-"),
-        fila("Total:",         f"${rep.total:,}"),
-        fila("Adelanto:",      f"${rep.adelanto:,}"),
-        fila("Saldo:",         f"${rep.total - rep.adelanto:,}"),
-    ]
-    tbl_equipo = Table(equipo_data, colWidths=[W * 0.22, W * 0.78])
-    tbl_equipo.setStyle(TableStyle([
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
-        ("BOX",           (0, 0), (-1, -1), 0.5, colors.black),
-        ("INNERGRID",     (0, 0), (-1, -1), 0.25, colors.HexColor("#AAAAAA")),
-        ("BACKGROUND",    (0, 0), (0, -1),  colors.HexColor("#FFFFFF")),
-    ]))
+    if es_revision:
+        equipo_rows = [
+            fila("Equipo:",          rep.celular),
+            fila("Descripción:",     rep.descripcion or "-"),
+            fila("Costo revisión:",  f"${rep.pago_parcial:,}"),
+        ]
+    else:
+        saldo = (rep.total or 0) - rep.pago_parcial
+        equipo_rows = [
+            fila("Equipo:",      rep.celular),
+            fila("Descripción:", rep.descripcion or "-"),
+            fila("Total:",       f"${rep.total:,}"),
+            fila("Adelanto:",    f"${rep.pago_parcial:,}"),
+            fila("Restan pagar:",       f"${saldo:,}"),
+        ]
+
+    tbl_equipo = Table(equipo_rows, colWidths=[W * 0.22, W * 0.78])
+    tbl_equipo.setStyle(_tabla_style())
     story.append(tbl_equipo)
     story.append(Spacer(1, 5*mm))
 
-    # ── Aviso accesorios ───────────────────────────────────────────────────────
-    story.append(Paragraph("EL CELULAR SE RECIBE SIN ACCESORIOS NI SIM CARD DEL CLIENTE", aviso))
+    story.append(Paragraph("EL CELULAR SE RECIBE SIN ACCESORIOS NI SIM CARD DEL CLIENTE", s["aviso"]))
+    story.append(Spacer(1, 5*mm))
+    story.append(_bloque_patron(W, s))
     story.append(Spacer(1, 5*mm))
 
-    # ── Patrón de desbloqueo ───────────────────────────────────────────────────
-    PATRON_IMG = "static/images/pattern-lock-icon.jpg"
-    img_size   = 28*mm
-    patron_img = Image(PATRON_IMG, width=img_size, height=img_size)
+    if es_revision:
+        texto_legal = (
+            "El equipo se recibe exclusivamente para diagnóstico técnico. El costo de revisión abonado cubre "
+            "la evaluación del equipo. Una vez realizado el diagnóstico, se informará al cliente el presupuesto "
+            "de reparación. Si el cliente acepta el presupuesto, el costo de revisión será descontado del total. "
+            "Transcurridos los <b>90 días corridos</b> a partir del ingreso sin que el cliente retire el equipo, "
+            "éste acepta que no podrá exigir al comercio su devolución. La firma de la presente planilla implica "
+            "para el cliente su expresa <b>declaración jurada</b> de que el equipo es de su exclusiva pertenencia "
+            "y fue adquirido de modo lícito, exhibiendo en este acto su DNI original."
+        )
+    else:
+        texto_legal = (
+            "El plazo de reparación aproximado es de <b>4 días hábiles</b> contados a partir de la fecha de la "
+            "presente planilla y, a fin de retirar su equipo, el cliente deberá apersonarse en el local comercial "
+            "con la copia de la misma. La garantía que se le otorgará al cliente será, sin excepción, de "
+            "<b>30 días corridos</b> a partir del retiro de su equipo celular. Transcurridos los <b>90 días "
+            "corridos</b> a partir de la entrega del equipo sin que el cliente lo haya retirado, éste acepta que "
+            "no le podrá exigir al comercio la devolución del mismo, entendiéndose que —acaecido dicho plazo— "
+            "ha hecho abandono voluntario de la cosa. La presente garantía <b>no abarca</b> la reparación de "
+            "celulares que estuvieren mojados. Finalmente, la firma de la presente planilla implica para el "
+            "cliente su expresa <b>declaración jurada</b> de que el equipo a ser reparado es de su exclusiva "
+            "pertenencia y que fue adquirido de modo lícito, exhibiendo en este acto su DNI original."
+        )
 
-    linea_patron = "_" * 38
-    patron_data = [
-        [
-            Paragraph("<b>Patrón de desbloqueo:</b>", bold9),
-            patron_img,
-            Table(
-                [
-                    [Paragraph("<b>Código de desbloqueo:</b>", bold9)],
-                    [Paragraph(linea_patron, normal9)],
-                    [Spacer(1, 3*mm)],
-                    [Paragraph("<b>(completar a mano)</b>", small8)],
-                ],
-                colWidths=[W * 0.52],
-            ),
-        ]
-    ]
-    tbl_patron = Table(patron_data, colWidths=[W * 0.26, img_size + 4*mm, W * 0.52])
-    tbl_patron.setStyle(TableStyle([
-        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
-        ("TOPPADDING",    (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("BOX",           (0, 0), (-1, -1), 0.5, colors.black),
-        ("LINEBEFORE",    (1, 0), (1, -1),  0.5, colors.black),
-        ("LINEBEFORE",    (2, 0), (2, -1),  0.5, colors.black),
-    ]))
-    story.append(tbl_patron)
-    story.append(Spacer(1, 5*mm))
-
-    # ── Párrafo legal ──────────────────────────────────────────────────────────
-    texto_legal = (
-        "El plazo de reparación aproximado es de <b>4 días hábiles</b> contados a partir de la fecha de la "
-        "presente planilla y, a fin de retirar su equipo, el cliente deberá apersonarse en el local comercial "
-        "con la copia de la misma. La garantía que se le otorgará al cliente será, sin excepción, de "
-        "<b>30 días corridos</b> a partir del retiro de su equipo celular. Transcurridos los <b>90 días "
-        "corridos</b> a partir de la entrega del equipo sin que el cliente lo haya retirado, éste acepta que "
-        "no le podrá exigir al comercio la devolución del mismo, entendiéndose que —acaecido dicho plazo— "
-        "ha hecho abandono voluntario de la cosa. La presente garantía <b>no abarca</b> la reparación de "
-        "celulares que estuvieren mojados. Finalmente, la firma de la presente planilla implica para el "
-        "cliente su expresa <b>declaración jurada</b> de que el equipo a ser reparado es de su exclusiva "
-        "pertenencia y que fue adquirido de modo lícito, exhibiendo en este acto su DNI original."
-    )
-    story.append(Paragraph(texto_legal, legal))
+    story.append(Paragraph(texto_legal, s["legal"]))
     story.append(Spacer(1, 8*mm))
-
-    # ── Firma del cliente ──────────────────────────────────────────────────────
-    firma_data = [
-        [
-            Paragraph("___________________________", normal9),
-            Paragraph("___________________________", normal9),
-        ],
-        [
-            Paragraph("Firma del cliente", small8),
-            Paragraph("Aclaración", small8),
-        ],
-    ]
-    tbl_firma = Table(firma_data, colWidths=[W * 0.5, W * 0.5])
-    tbl_firma.setStyle(TableStyle([
-        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-    ]))
-    story.append(tbl_firma)
+    story.append(_bloque_firma(W, s))
 
     doc.build(story)
-    pdf_bytes = buf.getvalue()
-
     filename = f"recepcion_{reparacion_id:04d}.pdf"
     return StreamingResponse(
-        io.BytesIO(pdf_bytes),
+        io.BytesIO(buf.getvalue()),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -591,10 +772,10 @@ def certificado_garantia(
     story.append(Spacer(1, 4*mm))
 
     tbl_equipo = Table([
-        fila("Equipo:",    rep.celular),
-        fila("Total:",     f"${rep.total:,}"),
-        fila("Adelanto:",  f"${rep.adelanto:,}"),
-        fila("Saldo:",     f"${rep.total - rep.adelanto:,}"),
+        fila("Equipo:",   rep.celular),
+        fila("Total:",    f"${rep.total:,}"),
+        fila("Adelanto:", f"${rep.pago_parcial:,}"),
+        fila("Restan pagar:",    f"${(rep.total or 0) - rep.pago_parcial:,}"),
     ], colWidths=[W * 0.22, W * 0.78])
     tbl_equipo.setStyle(tabla_style)
     story.append(tbl_equipo)
@@ -642,6 +823,114 @@ def certificado_garantia(
     filename = f"garantia_{reparacion_id:04d}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── PDF: Certificado de cancelación ──────────────────────────────────────────
+
+@router.get("/{reparacion_id}/certificado-cancelacion")
+def certificado_cancelacion(
+    reparacion_id: int,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(get_current_user),
+):
+    rep = _get_or_404(reparacion_id, session)
+    if rep.estado != "CANCELADO":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Solo se puede generar el certificado de cancelación para reparaciones en estado CANCELADO")
+
+    local   = session.get(Local,   rep.local_id)
+    usuario = session.get(Usuario, rep.usuario_id)
+
+    mov_cancelacion = session.exec(
+        select(MovimientoReparacion)
+        .where(MovimientoReparacion.reparacion_id == reparacion_id)
+        .where(MovimientoReparacion.estado_nuevo == "CANCELADO")
+        .order_by(MovimientoReparacion.fecha.desc())  # type: ignore
+    ).first()
+
+    monto_a_devolver = mov_cancelacion.monto_a_devolver if mov_cancelacion else 0
+    fecha_cancelacion = (
+        mov_cancelacion.fecha.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M")
+        if mov_cancelacion and mov_cancelacion.fecha else "-"
+    )
+
+    fecha_ingreso_str = rep.fecha_ingreso.astimezone(TZ_AR).strftime("%d/%m/%Y") if rep.fecha_ingreso else "-"
+    local_str = local.nombre if local else "-"
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm, topMargin=14*mm, bottomMargin=14*mm)
+    W = A4[0] - 36*mm
+    s = _pdf_styles()
+
+    def fila(label, valor):
+        return [Paragraph(f"<b>{label}</b>", s["bold9"]), Paragraph(valor or "-", s["normal9"])]
+
+    story = []
+
+    story.append(Paragraph("CERTIFICADO DE CANCELACIÓN DE REPARACIÓN", s["titulo"]))
+    story.append(Paragraph(f"N° {reparacion_id:04d}  —  {local_str}  —  {fecha_cancelacion}", s["subtitulo"]))
+    story.append(HRFlowable(width=W, thickness=1, color=colors.black, spaceAfter=5))
+
+    tbl_cliente = Table([
+        fila("Cliente:",        rep.nombre_cliente),
+        fila("Teléfono:",       rep.telefono_cliente),
+        fila("DNI:",            rep.dni_cliente or "-"),
+        fila("Fecha ingreso:",  fecha_ingreso_str),
+    ], colWidths=[W * 0.25, W * 0.75])
+    tbl_cliente.setStyle(_tabla_style())
+    story.append(tbl_cliente)
+    story.append(Spacer(1, 4*mm))
+
+    tbl_equipo = Table([
+        fila("Equipo:",          rep.celular),
+        fila("Descripción:",     rep.descripcion or "-"),
+        fila("Pagado por cliente:", f"${rep.pago_parcial:,}"),
+        fila("Monto a devolver:", f"${monto_a_devolver:,}"),
+        fila("Retención local:", f"${rep.pago_parcial - (monto_a_devolver or 0):,}"),
+    ], colWidths=[W * 0.25, W * 0.75])
+    tbl_equipo.setStyle(_tabla_style())
+    story.append(tbl_equipo)
+    story.append(Spacer(1, 6*mm))
+
+    if mov_cancelacion and mov_cancelacion.observaciones:
+        story.append(Paragraph(f"<b>Motivo de cancelación:</b> {mov_cancelacion.observaciones}", s["normal9"]))
+        story.append(Spacer(1, 5*mm))
+
+    texto_legal = (
+        f"El/La abajo firmante declara haber recibido de conformidad la suma de "
+        f"<b>${monto_a_devolver:,}</b> en concepto de devolución parcial del monto abonado "
+        f"por la reparación del equipo detallado, y presta su conformidad con la cancelación "
+        f"del servicio. Se deja constancia que el equipo fue retirado en buen estado."
+    )
+    story.append(Paragraph(texto_legal, s["legal"]))
+    story.append(Spacer(1, 10*mm))
+
+    firma_data = [
+        [
+            Paragraph("___________________________", s["normal9"]),
+            Paragraph("___________________________", s["normal9"]),
+            Paragraph("___________________________", s["normal9"]),
+        ],
+        [
+            Paragraph("Firma del cliente", s["small8"]),
+            Paragraph("Aclaración", s["small8"]),
+            Paragraph("DNI", s["small8"]),
+        ],
+    ]
+    tbl_firma = Table(firma_data, colWidths=[W * 0.38, W * 0.38, W * 0.24])
+    tbl_firma.setStyle(TableStyle([
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+    ]))
+    story.append(tbl_firma)
+
+    doc.build(story)
+    filename = f"cancelacion_{reparacion_id:04d}.pdf"
+    return StreamingResponse(
+        io.BytesIO(buf.getvalue()),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

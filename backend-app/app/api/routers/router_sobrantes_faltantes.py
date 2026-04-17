@@ -27,6 +27,7 @@ def upsert_sobrante_faltante(
     - Admin: puede enviar una fecha específica.
     Unique constraint: (fecha, local_id).
     """
+    # CONFIO EN QUE VIENE UNO SOLO DEL FRONT
     # ── Usuario ───────────────────────────────────────────────────────────────
     if current_user.rol == "admin" and data.usuario_id is not None:
         usuario = session.get(Usuario, data.usuario_id)
@@ -37,14 +38,17 @@ def upsert_sobrante_faltante(
         usuario_id = current_user.usuario_id
 
     # ── Upsert ────────────────────────────────────────────────────────────────
-    if current_user.rol == "admin" and data.fecha is not None:
-        # Admin con fecha explícita: lookup por esa fecha
-        registro = session.exec(
-            select(SobranteFaltante)
-            .where(SobranteFaltante.fecha == data.fecha)
-            .where(SobranteFaltante.local_id == data.local_id)
-        ).first()
 
+    if current_user.rol == "admin" :
+        # Admin con fecha explícita: lookup por esa fecha
+        statement = select(SobranteFaltante).where(SobranteFaltante.local_id == data.local_id).where(SobranteFaltante.usuario_id == usuario_id)
+        if data.fecha is not None:
+            statement = statement.where(SobranteFaltante.fecha == data.fecha)
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Admin debe especificar fecha")
+        
+        registro = session.exec(statement).first()
         if registro:
             registro.sobrante = data.sobrante
             registro.faltante = data.faltante
@@ -64,12 +68,13 @@ def upsert_sobrante_faltante(
             select(SobranteFaltante)
             .where(SobranteFaltante.fecha == func.current_date())
             .where(SobranteFaltante.local_id == data.local_id)
+            .where(SobranteFaltante.usuario_id == usuario_id)
         ).first()
 
         if registro:
             registro.sobrante = data.sobrante
             registro.faltante = data.faltante
-            registro.usuario_id = usuario_id
+            #registro.usuario_id = usuario_id
         else:
             # No se setea fecha: la DB la llena con server_default (CURRENT_DATE)
             registro = SobranteFaltante(
