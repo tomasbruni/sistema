@@ -171,8 +171,8 @@ class ReparacionCreate(SQLModel):
     dni_cliente: Optional[str] = None
     mail_cliente: Optional[str] = None
     descripcion: Optional[str] = None
-    total: Optional[int] # si se manda el celular a revision, es desconocido
-    adelanto: int # adelanto o revision
+    total: Optional[int] = None  # requerido para EN_REPARACION, None para EN_REVISION
+    pago_parcial: int
     local_id: int
     fecha_ingreso: Optional[date] = None
     usuario_id: Optional[int] = None

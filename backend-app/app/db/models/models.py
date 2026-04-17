@@ -236,8 +236,8 @@ class PagoVenta(SQLModel, table=True):
 class SobranteFaltante(SQLModel, table=True):
     __tablename__ = "sobrantes_faltantes"  # type: ignore
     __table_args__ = (
-        UniqueConstraint("fecha", "local_id", name="uq_sf_fecha_local"),
-    )
+        UniqueConstraint("fecha", "local_id", "usuario_id", name="uq_sf_fecha_local"),
+    ) #MODIFIQUE
 
     id: Optional[int] = Field(default=None, primary_key=True)
     local_id: int = Field(foreign_key="locales.local_id")
@@ -325,8 +325,8 @@ class Reparacion(SQLModel, table=True):
     dni_cliente: Optional[str] = None
     mail_cliente: Optional[str] = None
     descripcion: Optional[str] = None
-    total: Optional[int] = None
-    adelanto: int
+    total: Optional[int] = None # SI ES REVISION PUEDE NO SABERSE
+    pago_parcial: int # MIGRACION MANUAL EN ALEMBIC POR CAMBIO DE NOMBRE
     pago_reparador: Optional[int] = None  
     estado: str # REVISION | CANCELADO | EN_REPARACION | ENTREGADO
     fecha_ingreso: Optional[datetime] = Field(default=None,
@@ -347,13 +347,18 @@ class MovimientoReparacion(SQLModel, table=True):
     estado_anterior: Optional[str]
     estado_nuevo: Optional[str]
 
-    # PARA MOVIMIENTOS DE TIPO CAMBIO DE PRECIO
-    monto_total_anterior: Optional[int] = None
-    monto_total_nuevo: Optional[int] = None 
+    # PARA MOVIMIENTOS DE TIPO CAMBIO DE PRECIO (MANUAL EN ALEMBIC POR CAMBIO DE NOMBRE)
+    monto_anterior: Optional[int] = None 
+    monto_nuevo: Optional[int] = None 
 
     # PARA TRANSICIONES DE TIPO ENTREGA
     monto_entrega_recibido: Optional[int] = None
 
+    # PARA TRANSICIONES DE TIPO ACEPTAR
+    pago_parcial_agregado: Optional[int] = None
+
+    # PARA CANCELACIONES
+    monto_a_devolver: Optional[int] = None
 
     usuario_id: int = Field(foreign_key="usuarios.usuario_id")
     fecha: Optional[datetime] = Field(default=None,
