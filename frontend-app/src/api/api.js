@@ -660,6 +660,21 @@ export const api = {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }).then(handleResponse),
 
+  aceptarReparacion: (id, body) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/aceptar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  cancelarReparacion: (id, body) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/cancelar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  cambioPagoParcialReparacion: (id, body) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/cambio-pago-parcial`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(handleResponse),
+
   entregarReparacion: (id, body) =>
     authFetch(`${BASE_URL}/reparaciones/${id}/entregar`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -684,6 +699,13 @@ export const api = {
 
   descargarCertificadoGarantia: (id) =>
     authFetch(`${BASE_URL}/reparaciones/${id}/certificado-garantia`)
+      .then(res => {
+        if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) })
+        return res.blob()
+      }),
+
+  descargarCertificadoCancelacion: (id) =>
+    authFetch(`${BASE_URL}/reparaciones/${id}/certificado-cancelacion`)
       .then(res => {
         if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) })
         return res.blob()

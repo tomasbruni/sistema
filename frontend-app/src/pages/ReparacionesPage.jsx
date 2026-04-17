@@ -7,9 +7,10 @@ import { useModalDetalle } from '../hooks/ventas/useModalDetalles'
 import ModalHistorialReparaciones from '../components/reparaciones/ModalHistorialReparaciones'
 import { formatFecha, formatPrecio } from '../helpers/formats'
 
-const ESTADOS = ['EN_REPARACION', 'ENTREGADO', 'REPARACION_GARANTIA', 'ENTREGADO_GARANTIA']
+const ESTADOS = ['EN_REVISION', 'EN_REPARACION', 'ENTREGADO', 'CANCELADO', 'REPARACION_GARANTIA', 'ENTREGADO_GARANTIA']
 
 const formCrearVacio = {
+  estado_inicial:   'EN_REVISION',
   celular:          '',
   nombre_cliente:   '',
   telefono_cliente: '',
@@ -17,7 +18,7 @@ const formCrearVacio = {
   mail_cliente:     '',
   descripcion:      '',
   total:            '',
-  adelanto:         '',
+  pago_parcial:     '',
   local_id:         '',
   fecha_ingreso:    '',
   usuario_id:       '',
@@ -25,7 +26,7 @@ const formCrearVacio = {
 
 const formEditarVacio = {
   descripcion:      '',
-  adelanto:         '',
+  pago_parcial:     '',
   pago_reparador:   '',
   telefono_cliente: '',
   dni_cliente:      '',
@@ -43,18 +44,18 @@ export default function ReparacionesPage() {
   const [usuarios, setUsuarios]           = useState([])
 
   // Filtros
-  const [filtroLocalId, setFiltroLocalId]   = useState(null)
-  const [filtroEstado, setFiltroEstado]     = useState(null)
+  const [filtroLocalId, setFiltroLocalId]     = useState(null)
+  const [filtroEstado, setFiltroEstado]       = useState(null)
   const [filtroUsuarioId, setFiltroUsuarioId] = useState(null)
-  const [fechaDesde, setFechaDesde]         = useState('')
-  const [fechaHasta, setFechaHasta]         = useState('')
-  const [busqueda, setBusqueda]             = useState('')
-  const debounceRef                         = useRef(null)
+  const [fechaDesde, setFechaDesde]           = useState('')
+  const [fechaHasta, setFechaHasta]           = useState('')
+  const [busqueda, setBusqueda]               = useState('')
+  const debounceRef                           = useRef(null)
 
   // Formulario crear
-  const [mostrarCrear, setMostrarCrear]   = useState(false)
-  const [formCrear, setFormCrear]         = useState(formCrearVacio)
-  const [loadingCrear, setLoadingCrear]   = useState(false)
+  const [mostrarCrear, setMostrarCrear] = useState(false)
+  const [formCrear, setFormCrear]       = useState(formCrearVacio)
+  const [loadingCrear, setLoadingCrear] = useState(false)
 
   // Formulario editar
   const [editandoId, setEditandoId]       = useState(null)
@@ -62,24 +63,49 @@ export default function ReparacionesPage() {
   const [loadingEditar, setLoadingEditar] = useState(false)
 
   // Modal agregar monto
-  const [montoRepId, setMontoRepId]       = useState(null)
-  const [montoAgregar, setMontoAgregar]   = useState('')
-  const [montoObs, setMontoObs]           = useState('')
-  const [montoFecha, setMontoFecha]       = useState('')
-  const [montoUsuarioId, setMontoUsuarioId] = useState('')
-  const [loadingMonto, setLoadingMonto]   = useState(false)
+  const [montoRepId, setMontoRepId]           = useState(null)
+  const [montoAgregar, setMontoAgregar]       = useState('')
+  const [montoObs, setMontoObs]               = useState('')
+  const [montoFecha, setMontoFecha]           = useState('')
+  const [montoUsuarioId, setMontoUsuarioId]   = useState('')
+  const [loadingMonto, setLoadingMonto]       = useState(false)
+
+  // Modal cambio pago parcial
+  const [cambioPagoRepId, setCambioPagoRepId]         = useState(null)
+  const [cambioPagoMonto, setCambioPagoMonto]         = useState('')
+  const [cambioPagoObs, setCambioPagoObs]             = useState('')
+  const [cambioPagoFecha, setCambioPagoFecha]         = useState('')
+  const [cambioPagoUsuarioId, setCambioPagoUsuarioId] = useState('')
+  const [loadingCambioPago, setLoadingCambioPago]     = useState(false)
+
+  // Modal aceptar (EN_REVISION → EN_REPARACION)
+  const [aceptarRepId, setAceptarRepId]           = useState(null)
+  const [aceptarTotal, setAceptarTotal]           = useState('')
+  const [aceptarPagoParcial, setAceptarPagoParcial] = useState('')
+  const [aceptarObs, setAceptarObs]               = useState('')
+  const [aceptarFecha, setAceptarFecha]           = useState('')
+  const [aceptarUsuarioId, setAceptarUsuarioId]   = useState('')
+  const [loadingAceptar, setLoadingAceptar]       = useState(false)
+
+  // Modal cancelar
+  const [cancelarRepId, setCancelarRepId]         = useState(null)
+  const [cancelarMonto, setCancelarMonto]         = useState('')
+  const [cancelarObs, setCancelarObs]             = useState('')
+  const [cancelarFecha, setCancelarFecha]         = useState('')
+  const [cancelarUsuarioId, setCancelarUsuarioId] = useState('')
+  const [loadingCancelar, setLoadingCancelar]     = useState(false)
 
   // Modal transición (entregar / garantia / entregar-garantia)
-  const [transRepId, setTransRepId]       = useState(null)
-  const [transAccion, setTransAccion]     = useState(null) // 'entregar'|'garantia'|'entregar-garantia'
-  const [transObs, setTransObs]           = useState('')
-  const [transFecha, setTransFecha]       = useState('')
-  const [transUsuarioId, setTransUsuarioId] = useState('')
-  const [loadingTrans, setLoadingTrans]   = useState(false)
+  const [transRepId, setTransRepId]           = useState(null)
+  const [transAccion, setTransAccion]         = useState(null)
+  const [transObs, setTransObs]               = useState('')
+  const [transFecha, setTransFecha]           = useState('')
+  const [transUsuarioId, setTransUsuarioId]   = useState('')
+  const [loadingTrans, setLoadingTrans]       = useState(false)
 
   // Historial
-  const [historialRep, setHistorialRep] = useState(null) // reparacion completa para el modal
-  const { modalItem: historial, loadingModal: loadingHistorial, abrirModal: abrirHistorial, cerrarModal: cerrarHistorial } =
+  const [historialRep, setHistorialRep] = useState(null)
+  const { modalItem: historial, abrirModal: abrirHistorial, cerrarModal: cerrarHistorial } =
     useModalDetalle((repId) => api.obtenerHistorialReparacion(repId))
 
   useEffect(() => {
@@ -166,16 +192,18 @@ export default function ReparacionesPage() {
   const handleSubmitCrear = async (e) => {
     e.preventDefault()
     setLoadingCrear(true)
+    const esRevision = formCrear.estado_inicial === 'EN_REVISION'
     try {
       await api.crearReparacion({
+        estado_inicial:   formCrear.estado_inicial,
         celular:          formCrear.celular.trim(),
         nombre_cliente:   formCrear.nombre_cliente.trim(),
         telefono_cliente: formCrear.telefono_cliente.trim(),
         dni_cliente:      formCrear.dni_cliente.trim() || null,
         mail_cliente:     formCrear.mail_cliente.trim() || null,
         descripcion:      formCrear.descripcion.trim() || null,
-        total:            Number(formCrear.total),
-        adelanto:         Number(formCrear.adelanto),
+        total:            esRevision ? null : Number(formCrear.total),
+        pago_parcial:     Number(formCrear.pago_parcial),
         local_id:         Number(formCrear.local_id),
         ...(esAdmin && formCrear.fecha_ingreso ? { fecha_ingreso: formCrear.fecha_ingreso } : {}),
         ...(esAdmin && formCrear.usuario_id    ? { usuario_id: Number(formCrear.usuario_id) } : {}),
@@ -197,7 +225,7 @@ export default function ReparacionesPage() {
     cerrarTodo()
     setFormEditar({
       descripcion:      rep.descripcion ?? '',
-      adelanto:         rep.adelanto,
+      pago_parcial:     rep.pago_parcial,
       pago_reparador:   rep.pago_reparador ?? '',
       telefono_cliente: rep.telefono_cliente,
       dni_cliente:      rep.dni_cliente ?? '',
@@ -212,7 +240,7 @@ export default function ReparacionesPage() {
     try {
       const body = {
         descripcion:      formEditar.descripcion || null,
-        adelanto:         Number(formEditar.adelanto),
+        pago_parcial:     Number(formEditar.pago_parcial),
         telefono_cliente: formEditar.telefono_cliente.trim(),
         dni_cliente:      formEditar.dni_cliente.trim() || null,
         mail_cliente:     formEditar.mail_cliente.trim() || null,
@@ -253,6 +281,89 @@ export default function ReparacionesPage() {
     }
   }
 
+  // ── Cambio pago parcial ───────────────────────────────────────────────────
+
+  const abrirCambioPago = (rep) => {
+    cerrarTodo()
+    setCambioPagoRepId(rep.reparacion_id)
+    setCambioPagoMonto(rep.pago_parcial)
+  }
+
+  const handleSubmitCambioPago = async (e) => {
+    e.preventDefault()
+    setLoadingCambioPago(true)
+    try {
+      await api.cambioPagoParcialReparacion(cambioPagoRepId, {
+        nuevo_monto:   Number(cambioPagoMonto),
+        observaciones: cambioPagoObs.trim() || null,
+        ...(esAdmin && cambioPagoFecha     ? { fecha: cambioPagoFecha } : {}),
+        ...(esAdmin && cambioPagoUsuarioId ? { usuario_id: Number(cambioPagoUsuarioId) } : {}),
+      })
+      mostrarAlerta('success', 'Pago parcial actualizado correctamente.')
+      setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs(''); setCambioPagoFecha(''); setCambioPagoUsuarioId('')
+      fetchReparaciones()
+    } catch (err) {
+      mostrarAlerta('error', `Error: ${err.message}`)
+    } finally {
+      setLoadingCambioPago(false)
+    }
+  }
+
+  // ── Aceptar (EN_REVISION → EN_REPARACION) ────────────────────────────────
+
+  const abrirAceptar = (rep) => {
+    cerrarTodo()
+    setAceptarRepId(rep.reparacion_id)
+  }
+
+  const handleSubmitAceptar = async (e) => {
+    e.preventDefault()
+    setLoadingAceptar(true)
+    try {
+      await api.aceptarReparacion(aceptarRepId, {
+        total_final:           Number(aceptarTotal),
+        pago_parcial_agregado: Number(aceptarPagoParcial),
+        observaciones:         aceptarObs.trim() || null,
+        ...(esAdmin && aceptarFecha     ? { fecha: aceptarFecha } : {}),
+        ...(esAdmin && aceptarUsuarioId ? { usuario_id: Number(aceptarUsuarioId) } : {}),
+      })
+      mostrarAlerta('success', 'Reparación aceptada correctamente.')
+      setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs(''); setAceptarFecha(''); setAceptarUsuarioId('')
+      fetchReparaciones()
+    } catch (err) {
+      mostrarAlerta('error', `Error: ${err.message}`)
+    } finally {
+      setLoadingAceptar(false)
+    }
+  }
+
+  // ── Cancelar ──────────────────────────────────────────────────────────────
+
+  const abrirCancelar = (rep) => {
+    cerrarTodo()
+    setCancelarRepId(rep.reparacion_id)
+  }
+
+  const handleSubmitCancelar = async (e) => {
+    e.preventDefault()
+    setLoadingCancelar(true)
+    try {
+      await api.cancelarReparacion(cancelarRepId, {
+        monto_a_devolver: cancelarMonto !== '' ? Number(cancelarMonto) : null,
+        observaciones:    cancelarObs.trim() || null,
+        ...(esAdmin && cancelarFecha     ? { fecha: cancelarFecha } : {}),
+        ...(esAdmin && cancelarUsuarioId ? { usuario_id: Number(cancelarUsuarioId) } : {}),
+      })
+      mostrarAlerta('success', 'Reparación cancelada.')
+      setCancelarRepId(null); setCancelarMonto(''); setCancelarObs(''); setCancelarFecha(''); setCancelarUsuarioId('')
+      fetchReparaciones()
+    } catch (err) {
+      mostrarAlerta('error', `Error: ${err.message}`)
+    } finally {
+      setLoadingCancelar(false)
+    }
+  }
+
   // ── Transiciones ──────────────────────────────────────────────────────────
 
   const abrirTransicion = (repId, accion) => {
@@ -270,8 +381,8 @@ export default function ReparacionesPage() {
       ...(esAdmin && transUsuarioId ? { usuario_id: Number(transUsuarioId) } : {}),
     }
     try {
-      if (transAccion === 'entregar')          await api.entregarReparacion(transRepId, body)
-      else if (transAccion === 'garantia')     await api.garantiaReparacion(transRepId, body)
+      if (transAccion === 'entregar')               await api.entregarReparacion(transRepId, body)
+      else if (transAccion === 'garantia')          await api.garantiaReparacion(transRepId, body)
       else if (transAccion === 'entregar-garantia') await api.entregarGarantiaReparacion(transRepId, body)
       mostrarAlerta('success', 'Reparación actualizada correctamente.')
       setTransRepId(null); setTransAccion(null)
@@ -294,10 +405,12 @@ export default function ReparacionesPage() {
   // ── Cerrar todo ───────────────────────────────────────────────────────────
 
   const cerrarTodo = () => {
-    setMostrarCrear(false)
-    setFormCrear(formCrearVacio)
+    setMostrarCrear(false); setFormCrear(formCrearVacio)
     setEditandoId(null)
     setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setMontoFecha(''); setMontoUsuarioId('')
+    setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs(''); setCambioPagoFecha(''); setCambioPagoUsuarioId('')
+    setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs(''); setAceptarFecha(''); setAceptarUsuarioId('')
+    setCancelarRepId(null); setCancelarMonto(''); setCancelarObs(''); setCancelarFecha(''); setCancelarUsuarioId('')
     setTransRepId(null); setTransAccion(null); setTransObs(''); setTransFecha(''); setTransUsuarioId('')
   }
 
@@ -308,9 +421,7 @@ export default function ReparacionesPage() {
       const blob = await apiFn()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.click()
+      a.href = url; a.download = filename; a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -320,10 +431,12 @@ export default function ReparacionesPage() {
   const nombreUsuario = (id) => usuarios.find(u => u.usuario_id === id)?.nombre ?? id
 
   const estadoClase = (estado) => ({
-    EN_REPARACION:     'activo',
+    EN_REVISION:         'pendiente',
+    EN_REPARACION:       'activo',
     REPARACION_GARANTIA: 'activo',
-    ENTREGADO:         'inactivo',
-    ENTREGADO_GARANTIA: 'inactivo',
+    ENTREGADO:           'inactivo',
+    ENTREGADO_GARANTIA:  'inactivo',
+    CANCELADO:           'cancelado',
   }[estado] ?? '')
 
   const labelTransicion = (accion) => ({
@@ -332,6 +445,21 @@ export default function ReparacionesPage() {
     'entregar-garantia': 'Entregar garantía',
   }[accion] ?? accion)
 
+  const adminCampos = (fecha, setFecha, usuarioId, setUsuarioId) => esAdmin && (
+    <div className="form-row">
+      <div className="form-group">
+        <label>Fecha</label>
+        <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label>Vendedor/a</label>
+        <select value={usuarioId} onChange={e => setUsuarioId(e.target.value)}>
+          <option value="">Usuario actual</option>
+          {usuarios.map(u => <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>)}
+        </select>
+      </div>
+    </div>
+  )
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
@@ -355,6 +483,23 @@ export default function ReparacionesPage() {
         <div className="form-card">
           <h3>Nueva reparacion</h3>
           <form onSubmit={handleSubmitCrear} className="acc-form">
+
+            {/* Selector estado inicial */}
+            <div className="form-row">
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Tipo de ingreso *</label>
+                <div className="filtros-chips" style={{ marginTop: 6 }}>
+                  {['EN_REVISION', 'EN_REPARACION'].map(est => (
+                    <button key={est} type="button"
+                      className={`filtro-chip ${formCrear.estado_inicial === est ? 'filtro-chip-activo' : ''}`}
+                      onClick={() => setFormCrear(p => ({ ...p, estado_inicial: est, total: '' }))}>
+                      {est === 'EN_REVISION' ? 'Revisión (monto desconocido)' : 'Reparación (monto conocido)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="form-row">
               <div className="form-group">
                 <label>Celular (marca y modelo) *</label>
@@ -371,6 +516,7 @@ export default function ReparacionesPage() {
                 </select>
               </div>
             </div>
+
             <div className="form-row">
               <div className="form-group">
                 <label>Nombre del cliente *</label>
@@ -385,6 +531,7 @@ export default function ReparacionesPage() {
                   required placeholder="Ej: 11-1234-5678" />
               </div>
             </div>
+
             <div className="form-row">
               <div className="form-group">
                 <label>DNI del cliente</label>
@@ -399,28 +546,34 @@ export default function ReparacionesPage() {
                   placeholder="cliente@mail.com" />
               </div>
             </div>
+
             <div className="form-row">
               <div className="form-group" style={{ flex: 1 }}>
-                <label>Descripcion del arreglo</label>
+                <label>Descripcion del problema</label>
                 <input value={formCrear.descripcion}
                   onChange={e => setFormCrear(p => ({ ...p, descripcion: e.target.value }))}
-                  placeholder="Ej: cambio de módulo" />
+                  placeholder={formCrear.estado_inicial === 'EN_REVISION' ? 'Ej: pantalla rota, no carga...' : 'Ej: cambio de módulo'} />
               </div>
             </div>
+
             <div className="form-row">
+              {formCrear.estado_inicial === 'EN_REPARACION' && (
+                <div className="form-group">
+                  <label>Total *</label>
+                  <input type="number" value={formCrear.total}
+                    onChange={e => setFormCrear(p => ({ ...p, total: e.target.value }))}
+                    required min={0} placeholder="Monto total" />
+                </div>
+              )}
               <div className="form-group">
-                <label>Total *</label>
-                <input type="number" value={formCrear.total}
-                  onChange={e => setFormCrear(p => ({ ...p, total: e.target.value }))}
-                  required min={0} placeholder="Monto total" />
-              </div>
-              <div className="form-group">
-                <label>Adelanto *</label>
-                <input type="number" value={formCrear.adelanto}
-                  onChange={e => setFormCrear(p => ({ ...p, adelanto: e.target.value }))}
-                  required min={0} placeholder="Monto adelanto" />
+                <label>{formCrear.estado_inicial === 'EN_REVISION' ? 'Costo de revisión *' : 'Adelanto *'}</label>
+                <input type="number" value={formCrear.pago_parcial}
+                  onChange={e => setFormCrear(p => ({ ...p, pago_parcial: e.target.value }))}
+                  required min={0}
+                  placeholder={formCrear.estado_inicial === 'EN_REVISION' ? 'Costo de diagnóstico' : 'Monto adelanto'} />
               </div>
             </div>
+
             {esAdmin && (
               <div className="form-row">
                 <div className="form-group">
@@ -433,13 +586,12 @@ export default function ReparacionesPage() {
                   <select value={formCrear.usuario_id}
                     onChange={e => setFormCrear(p => ({ ...p, usuario_id: e.target.value }))}>
                     <option value="">Usuario actual</option>
-                    {usuarios.map(u => (
-                      <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>
-                    ))}
+                    {usuarios.map(u => <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>)}
                   </select>
                 </div>
               </div>
             )}
+
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setMostrarCrear(false); setFormCrear(formCrearVacio) }}
@@ -452,7 +604,7 @@ export default function ReparacionesPage() {
         </div>
       )}
 
-      {/* ── Formulario editar (inline sobre la fila) ── */}
+      {/* ── Formulario editar ── */}
       {editandoId && (
         <div className="form-card">
           <h3>Editar reparacion #{editandoId}</h3>
@@ -482,9 +634,9 @@ export default function ReparacionesPage() {
                   onChange={e => setFormEditar(p => ({ ...p, descripcion: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label>Adelanto</label>
-                <input type="number" value={formEditar.adelanto} min={0}
-                  onChange={e => setFormEditar(p => ({ ...p, adelanto: e.target.value }))} />
+                <label>Pago parcial</label>
+                <input type="number" value={formEditar.pago_parcial} min={0}
+                  onChange={e => setFormEditar(p => ({ ...p, pago_parcial: e.target.value }))} />
               </div>
               {esAdmin && (
                 <div className="form-group">
@@ -523,30 +675,113 @@ export default function ReparacionesPage() {
                   onChange={e => setMontoObs(e.target.value)} placeholder="Motivo (opcional)" />
               </div>
             </div>
-            {esAdmin && (
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Fecha</label>
-                  <input type="date" value={montoFecha}
-                    onChange={e => setMontoFecha(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Vendedor/a</label>
-                  <select value={montoUsuarioId} onChange={e => setMontoUsuarioId(e.target.value)}>
-                    <option value="">Usuario actual</option>
-                    {usuarios.map(u => (
-                      <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
+            {adminCampos(montoFecha, setMontoFecha, montoUsuarioId, setMontoUsuarioId)}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
-                onClick={() => { setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setMontoFecha(''); setMontoUsuarioId('') }}
+                onClick={() => { setMontoRepId(null); setMontoAgregar(''); setMontoObs('') }}
                 disabled={loadingMonto}>Cancelar</button>
               <button type="submit" className="btn btn-primary" disabled={loadingMonto}>
                 {loadingMonto ? 'Guardando...' : 'Confirmar'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Modal cambio pago parcial ── */}
+      {cambioPagoRepId && (
+        <div className="form-card">
+          <h3>Corregir pago parcial — reparacion #{cambioPagoRepId}</h3>
+          <form onSubmit={handleSubmitCambioPago} className="acc-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label>Nuevo monto *</label>
+                <input type="number" value={cambioPagoMonto} min={0} required
+                  onChange={e => setCambioPagoMonto(e.target.value)} />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Observaciones</label>
+                <input value={cambioPagoObs}
+                  onChange={e => setCambioPagoObs(e.target.value)} placeholder="Motivo de la corrección (opcional)" />
+              </div>
+            </div>
+            {adminCampos(cambioPagoFecha, setCambioPagoFecha, cambioPagoUsuarioId, setCambioPagoUsuarioId)}
+            <div className="form-actions">
+              <button type="button" className="btn btn-secondary"
+                onClick={() => { setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs('') }}
+                disabled={loadingCambioPago}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={loadingCambioPago}>
+                {loadingCambioPago ? 'Guardando...' : 'Confirmar'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Modal aceptar (EN_REVISION → EN_REPARACION) ── */}
+      {aceptarRepId && (
+        <div className="form-card">
+          <h3>Aceptar reparacion — #{aceptarRepId}</h3>
+          <p style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
+            Se establecerá el total y se pasará a estado EN_REPARACION.
+          </p>
+          <form onSubmit={handleSubmitAceptar} className="acc-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label>Total final *</label>
+                <input type="number" value={aceptarTotal} min={0} required
+                  onChange={e => setAceptarTotal(e.target.value)} placeholder="Monto total de la reparación" />
+              </div>
+              <div className="form-group">
+                <label>Pago adicional del cliente</label>
+                <input type="number" value={aceptarPagoParcial} min={0}
+                  onChange={e => setAceptarPagoParcial(e.target.value)} placeholder="0 si no agrega nada" />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Observaciones</label>
+                <input value={aceptarObs}
+                  onChange={e => setAceptarObs(e.target.value)} placeholder="Diagnóstico, notas (opcional)" />
+              </div>
+            </div>
+            {adminCampos(aceptarFecha, setAceptarFecha, aceptarUsuarioId, setAceptarUsuarioId)}
+            <div className="form-actions">
+              <button type="button" className="btn btn-secondary"
+                onClick={() => { setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial('') }}
+                disabled={loadingAceptar}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={loadingAceptar}>
+                {loadingAceptar ? 'Guardando...' : 'Aceptar reparacion'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Modal cancelar ── */}
+      {cancelarRepId && (
+        <div className="form-card">
+          <h3>Cancelar reparacion — #{cancelarRepId}</h3>
+          <form onSubmit={handleSubmitCancelar} className="acc-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label>Monto a devolver al cliente</label>
+                <input type="number" value={cancelarMonto} min={0}
+                  onChange={e => setCancelarMonto(e.target.value)} placeholder="0 si no se devuelve nada" />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label>Motivo de cancelación</label>
+                <input value={cancelarObs}
+                  onChange={e => setCancelarObs(e.target.value)} placeholder="Opcional" />
+              </div>
+            </div>
+            {adminCampos(cancelarFecha, setCancelarFecha, cancelarUsuarioId, setCancelarUsuarioId)}
+            <div className="form-actions">
+              <button type="button" className="btn btn-secondary"
+                onClick={() => { setCancelarRepId(null); setCancelarMonto(''); setCancelarObs('') }}
+                disabled={loadingCancelar}>Volver</button>
+              <button type="submit" className="btn btn-danger" disabled={loadingCancelar}>
+                {loadingCancelar ? 'Cancelando...' : 'Confirmar cancelación'}
               </button>
             </div>
           </form>
@@ -565,24 +800,7 @@ export default function ReparacionesPage() {
                   onChange={e => setTransObs(e.target.value)} placeholder="Opcional" />
               </div>
             </div>
-            {esAdmin && (
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Fecha</label>
-                  <input type="date" value={transFecha}
-                    onChange={e => setTransFecha(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Vendedor/a</label>
-                  <select value={transUsuarioId} onChange={e => setTransUsuarioId(e.target.value)}>
-                    <option value="">Usuario actual</option>
-                    {usuarios.map(u => (
-                      <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
+            {adminCampos(transFecha, setTransFecha, transUsuarioId, setTransUsuarioId)}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setTransRepId(null); setTransAccion(null) }}
@@ -596,7 +814,7 @@ export default function ReparacionesPage() {
       )}
 
       {/* ── Buscador y filtros ── */}
-      {!mostrarCrear && !editandoId && !montoRepId && !transRepId && (
+      {!mostrarCrear && !editandoId && !montoRepId && !cambioPagoRepId && !aceptarRepId && !cancelarRepId && !transRepId && (
         <>
           <div className="lista-toolbar">
             <input className="buscador" type="search"
@@ -668,7 +886,7 @@ export default function ReparacionesPage() {
                 <th>Celular</th>
                 <th>Cliente</th>
                 <th>Total</th>
-                <th>Adelanto</th>
+                <th>Pago parcial</th>
                 {esAdmin && <th>Pago reparador</th>}
                 <th>Estado</th>
                 <th>Vendedor/a</th>
@@ -683,8 +901,8 @@ export default function ReparacionesPage() {
                     <td>{formatFecha(rep.fecha_ingreso)}</td>
                     <td>{rep.celular}</td>
                     <td>{rep.nombre_cliente}</td>
-                    <td>{formatPrecio(rep.total)}</td>
-                    <td>{formatPrecio(rep.adelanto)}</td>
+                    <td>{rep.total != null ? formatPrecio(rep.total) : '—'}</td>
+                    <td>{formatPrecio(rep.pago_parcial)}</td>
                     {esAdmin && <td>{rep.pago_reparador != null ? formatPrecio(rep.pago_reparador) : '-'}</td>}
                     <td>
                       <span className={`estado-badge ${estadoClase(rep.estado)}`}>
@@ -693,21 +911,69 @@ export default function ReparacionesPage() {
                     </td>
                     <td>{nombreUsuario(rep.usuario_id)}</td>
                     <td className="acciones-cell">
-                      <button className="btn btn-sm btn-secondary"
-                        onClick={() => abrirEditar(rep)}>Editar</button>
 
-                      <button className="btn btn-sm btn-secondary"
-                        onClick={() => { cerrarTodo(); setMontoRepId(rep.reparacion_id) }}>
-                        + Monto
-                      </button>
+                      {/* ── EN_REVISION ── */}
+                      {rep.estado === 'EN_REVISION' && (<>
+                        <button className="btn btn-sm btn-primary"
+                          onClick={() => abrirAceptar(rep)}>
+                          Aceptar
+                        </button>
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => abrirCancelar(rep)}>
+                          Cancelar
+                        </button>
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => descargarPdf(
+                            () => api.descargarCertificadoRecepcion(rep.reparacion_id),
+                            `recepcion_${String(rep.reparacion_id).padStart(4, '0')}.pdf`
+                          )}>
+                          Cert. Recepción
+                        </button>
+                      </>)}
 
-                      {rep.estado === 'EN_REPARACION' && (
+                      {/* ── EN_REPARACION ── */}
+                      {rep.estado === 'EN_REPARACION' && (<>
                         <button className="btn btn-sm btn-primary"
                           onClick={() => abrirTransicion(rep.reparacion_id, 'entregar')}>
                           Entregar
                         </button>
-                      )}
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => abrirCancelar(rep)}>
+                          Cancelar
+                        </button>
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => { cerrarTodo(); setMontoRepId(rep.reparacion_id) }}>
+                          Agregar monto total
+                        </button>
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => abrirCambioPago(rep)}>
+                          Corregir pago
+                        </button>
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => descargarPdf(
+                            () => api.descargarCertificadoRecepcion(rep.reparacion_id),
+                            `recepcion_${String(rep.reparacion_id).padStart(4, '0')}.pdf`
+                          )}>
+                          Cert. Recepción
+                        </button>
+                      </>)}
 
+                      {/* ── ENTREGADO / ENTREGADO_GARANTIA ── */}
+                      {(rep.estado === 'ENTREGADO' || rep.estado === 'ENTREGADO_GARANTIA') && (<>
+                        <button className="btn btn-sm btn-secondary btn-danger"
+                          onClick={() => abrirTransicion(rep.reparacion_id, 'garantia')}>
+                          Devolucion
+                        </button>
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => descargarPdf(
+                            () => api.descargarCertificadoGarantia(rep.reparacion_id),
+                            `garantia_${String(rep.reparacion_id).padStart(4, '0')}.pdf`
+                          )}>
+                          Cert. Garantía
+                        </button>
+                      </>)}
+
+                      {/* ── REPARACION_GARANTIA ── */}
                       {rep.estado === 'REPARACION_GARANTIA' && (
                         <button className="btn btn-sm btn-primary"
                           onClick={() => abrirTransicion(rep.reparacion_id, 'entregar-garantia')}>
@@ -715,36 +981,23 @@ export default function ReparacionesPage() {
                         </button>
                       )}
 
-
-                      {(rep.estado === 'ENTREGADO' || rep.estado === 'ENTREGADO_GARANTIA') && (
-                        <>
-                          <button className="btn btn-sm btn-secondary btn-danger"
-                            onClick={() => abrirTransicion(rep.reparacion_id, 'garantia')}>
-                            Devolucion
-                          </button>
-                          <button className="btn btn-sm btn-secondary"
-                            onClick={() => descargarPdf(
-                              () => api.descargarCertificadoGarantia(rep.reparacion_id),
-                              `garantia_${String(rep.reparacion_id).padStart(4, '0')}.pdf`
-                            )}>
-                            Cert. Garantía
-                          </button>
-                        </>
+                      {/* ── CANCELADO ── */}
+                      {rep.estado === 'CANCELADO' && (
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => descargarPdf(
+                            () => api.descargarCertificadoCancelacion(rep.reparacion_id),
+                            `cancelacion_${String(rep.reparacion_id).padStart(4, '0')}.pdf`
+                          )}>
+                          Cert. Cancelación
+                        </button>
                       )}
 
+                      {/* ── Siempre visibles ── */}
                       <button className="btn btn-sm btn-secondary"
-                        onClick={() => descargarPdf(
-                          () => api.descargarCertificadoRecepcion(rep.reparacion_id),
-                          `recepcion_${String(rep.reparacion_id).padStart(4, '0')}.pdf`
-                        )}>
-                        Cert. Recepción
-                      </button>
-
-
+                        onClick={() => abrirEditar(rep)}>Editar</button>
                       <button className="btn btn-sm btn-secondary"
-                        onClick={() => verHistorial(rep)}>
-                        Historial
-                      </button>
+                        onClick={() => verHistorial(rep)}>Historial</button>
+
                     </td>
                   </tr>
                 </React.Fragment>
