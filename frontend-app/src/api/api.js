@@ -202,9 +202,9 @@ export const api = {
   listarChips: ({ skip = 0, limit = LIMIT, local_id = null, estado = null, compania = null, buscar = null } = {}) =>
     authFetch(`${BASE_URL}/chips/?${buildParams({ skip, limit, local_id, estado, compania, buscar })}`).then(handleResponse),
 
-  listarVentas: ({ skip = 0, limit = LIMIT, local_id = null } = {}) =>
+  listarVentas: ({ skip = 0, limit = LIMIT, local_id = null, usuario_id = null, fecha = null } = {}) =>
     authFetch(
-      `${BASE_URL}/ventas/?${buildParams({ skip, limit, local_id })}`
+      `${BASE_URL}/ventas/?${buildParams({ skip, limit, local_id, usuario_id, fecha })}`
     ).then(handleResponse),
 
   listarUsuarios: ({ activo } = {}) => {

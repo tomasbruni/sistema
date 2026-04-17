@@ -157,7 +157,7 @@ export default function VentasPage() {
     if (localId !== null) {
       fetchVentas(0)
     }
-  }, [localId])
+  }, [localId, fechaCaja, usuarioId])
 
   // ─── Usuarios ──────────────────────────────────────────────────────────────
   const fetchUsuarios = async () => {
@@ -185,7 +185,7 @@ export default function VentasPage() {
   const fetchVentas = async (pag) => {
     setLoadingLista(true)
     try {
-      const data = await api.listarVentas({ skip: pag * 10, limit: 10 + 1, local_id: localId })
+      const data = await api.listarVentas({ skip: pag * 10, limit: 10 + 1, local_id: localId, fecha: fechaCaja, usuario_id: usuarioId})
       setHayMas(data.length > 10)
       setVentas(data.slice(0, 10))
     } catch (err) {
