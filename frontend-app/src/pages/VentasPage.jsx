@@ -113,6 +113,10 @@ export default function VentasPage() {
   const handleGuardarSF = async () => {
     if (!localId) { mostrarAlerta('error', 'Seleccioná un local.'); return }
     if (rol === 'admin' && !fechaCaja) { mostrarAlerta('error', 'Seleccioná una fecha.'); return }
+    if (parseInt(sobrante) > 0 && parseInt(faltante) > 0) {
+      mostrarAlerta('error', 'No podés ingresar sobrante y faltante al mismo tiempo.')
+      return
+    }
     setLoadingSF(true)
     try {
       const body = {
@@ -1033,6 +1037,7 @@ export default function VentasPage() {
                 value={sobrante}
                 onChange={e => setSobrante(e.target.value)}
                 placeholder="$"
+                disabled={parseInt(faltante) > 0}
               />
             </div>
             <div className="form-group" style={{ maxWidth: 130 }}>
@@ -1042,6 +1047,7 @@ export default function VentasPage() {
                 value={faltante}
                 onChange={e => setFaltante(e.target.value)}
                 placeholder="$"
+                disabled={parseInt(sobrante) > 0}
               />
             </div>
             <button

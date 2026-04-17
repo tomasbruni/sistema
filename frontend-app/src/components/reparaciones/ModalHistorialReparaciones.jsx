@@ -52,8 +52,8 @@ function ModalHistorialReparaciones({ reparacion, historial, nombreUsuario, onCl
                     <td>{mov.tipo_movimiento}</td>
                     <td>{mov.estado_anterior ?? '-'}</td>
                     <td>{mov.estado_nuevo ?? '-'}</td>
-                    <td className="num">{mov.monto_total_anterior != null ? formatPrecio(mov.monto_total_anterior) : '-'}</td>
-                    <td className="num">{mov.monto_total_nuevo != null ? formatPrecio(mov.monto_total_nuevo) : '-'}</td>
+                    <td className="num">{mov.monto_total_anterior != null ? formatPrecio(mov.monto_anterior) : '-'}</td>
+                    <td className="num">{mov.monto_total_nuevo != null ? formatPrecio(mov.monto_nuevo) : '-'}</td>
                     <td className="num">{mov.monto_entrega_recibido != null ? formatPrecio(mov.monto_entrega_recibido) : '-'}</td>
                     <td>{nombreUsuario(mov.usuario_id)}</td>
                     <td>{mov.observaciones ?? '-'}</td>
