@@ -39,8 +39,8 @@ class AccesorioUpdate(SQLModel):
     precio: Optional[int] = None
     tipo_id: Optional[int] = None
     subtipo_id: Optional[int] = None
-    modelo_id: Optional[int] = None
-    marca_id: Optional[int] = None
+    modelo_celular_id: Optional[int] = None
+    marca_celular_id: Optional[int] = None
     activo: Optional[bool] = None
 
 

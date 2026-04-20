@@ -396,7 +396,7 @@ def actualizar_accesorio(
         session.rollback()
         raise HTTPException(
             status_code=400,
-            detail="No se pudo actualizar el accesorio. Verifique que los campos seleccionados existan."
+            detail="No se pudo actualizar el accesorio. Verifique que no haya duplicados."
         )
 
 
