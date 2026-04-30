@@ -49,9 +49,9 @@ export default function App() {
           <Route path="chips"       element={<RutaAdmin><ChipsPage /></RutaAdmin>} />
           <Route path="celulares"   element={<RutaAdmin><CelularesPage /></RutaAdmin>} />
           <Route path="reportes"    element={<RutaAdmin><ReportesPage /></RutaAdmin>} />
-          <Route path="pedidos-online" element={<RutaAdmin><PedidosOnlinePage /></RutaAdmin>} />
+          {/* <Route path="pedidos-online" element={<RutaAdmin><PedidosOnlinePage /></RutaAdmin>} /> */}
           <Route path="finanzas" element={<RutaAdmin><MovimientosFinancierosPage /></RutaAdmin>} />
-          {/* <Route path="reparaciones" element={<ReparacionesPage />} /> */}
+          <Route path="reparaciones" element={<ReparacionesPage />} /> 
           <Route path="importar-excel" element={<RutaAdmin><ImportarExcelPage /></RutaAdmin>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

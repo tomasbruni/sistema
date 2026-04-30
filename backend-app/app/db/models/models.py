@@ -327,7 +327,8 @@ class Reparacion(SQLModel, table=True):
     descripcion: Optional[str] = None
     total: Optional[int] = None # SI ES REVISION PUEDE NO SABERSE
     pago_parcial: int # MIGRACION MANUAL EN ALEMBIC POR CAMBIO DE NOMBRE
-    pago_reparador: Optional[int] = None  
+    pago_reparador: Optional[int] = None
+    pagado: bool = Field(default=False)
     estado: str # REVISION | CANCELADO | EN_REPARACION | ENTREGADO
     fecha_ingreso: Optional[datetime] = Field(default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now())

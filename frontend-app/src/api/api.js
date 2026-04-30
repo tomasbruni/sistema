@@ -254,6 +254,13 @@ export const api = {
   eliminarAccesorio: (id) =>
     authFetch(`${BASE_URL}/accesorios/${id}`, { method: 'DELETE' }).then(handleResponse),
 
+  cambioPrecioMasivo: (body) =>
+    authFetch(`${BASE_URL}/accesorios/cambio-precio-masivo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
   // FormData — no pasar Content-Type, el browser lo setea con el boundary correcto
   importarExcel: (formData) =>
     authFetch(`${BASE_URL}/accesorios/importar-excel`, {
@@ -290,18 +297,24 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handleResponse),
 
-  exportarStock: ({ buscar = '', tipo_id = null, subtipo_id = null, local_id = null, activo = true } = {}) =>
-    authFetch(`${BASE_URL}/stock/export?${buildParams({ buscar, tipo_id, subtipo_id, local_id, activo })}`)
-      .then(res => {
+  exportarStock: ({ buscar = '', tipo_id = null, subtipo_id = null, local_id = null, activo = true, mostrar_listado = true } = {}) =>
+    authFetch(`${BASE_URL}/stock/export?${buildParams({ buscar, tipo_id, subtipo_id, local_id, activo, mostrar_listado })}`)
+      .then(async res => {
         if (!res.ok) throw new Error(`Error ${res.status}`)
-        return res.blob()
+        const blob = await res.blob()
+        const cd = res.headers.get('Content-Disposition') ?? ''
+        const filename = cd.match(/filename="?([^"]+)"?/)?.[1] ?? 'stock.xlsx'
+        return { blob, filename }
       }),
 
   exportarStockPorExclusion: ({ excluir_tipo_ids = null, local_id = null } = {}) =>
     authFetch(`${BASE_URL}/stock/export-por-exclusion?${buildParams({ excluir_tipo_ids, local_id })}`)
-      .then(res => {
+      .then(async res => {
         if (!res.ok) throw new Error(`Error ${res.status}`)
-        return res.blob()
+        const blob = await res.blob()
+        const cd = res.headers.get('Content-Disposition') ?? ''
+        const filename = cd.match(/filename="?([^"]+)"?/)?.[1] ?? 'stock.xlsx'
+        return { blob, filename }
       }),
 
   // Reemplaza a ingresoEgreso para el flujo de ingreso

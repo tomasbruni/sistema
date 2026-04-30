@@ -1,8 +1,8 @@
 import { createContext, useState, useEffect, useCallback, useRef } from 'react'
 
 // ─── CONTEXTO ─────────────────────────────────────────────────────────────────
-// Guarda: { token, nombre, rol } en localStorage para persistir entre recargas.
-// Expone: login(datos), logout(), y los tres valores.
+// Guarda: { token, nombre, rol, usuarioId } en localStorage para persistir entre recargas.
+// Expone: login(datos), logout(), y los cuatro valores.
 
 const AuthContext = createContext(null)
 
@@ -15,9 +15,13 @@ const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   // Inicializar desde localStorage si ya había una sesión guardada
-  const [token,  setToken]  = useState(() => localStorage.getItem('token')  ?? null)
-  const [nombre, setNombre] = useState(() => localStorage.getItem('nombre') ?? null)
-  const [rol,    setRol]    = useState(() => localStorage.getItem('rol')    ?? null)
+  const [token,     setToken]     = useState(() => localStorage.getItem('token')     ?? null)
+  const [nombre,    setNombre]    = useState(() => localStorage.getItem('nombre')    ?? null)
+  const [rol,       setRol]       = useState(() => localStorage.getItem('rol')       ?? null)
+  const [usuarioId, setUsuarioId] = useState(() => {
+    const v = localStorage.getItem('usuario_id')
+    return v !== null ? Number(v) : null
+  })
   const [expirada, setExpirada] = useState(null)
   
   // flag para que solo 1 evento dispare logout,
@@ -27,15 +31,16 @@ export function AuthProvider({ children }) {
   // sincrono a diferencia del estado, la siguiente ejecucion lo ve
   const alreadyLoggedOut = useRef(false)
 
-  // datos = { access_token, nombre, rol } 
   const login = (datos) => {
     localStorage.setItem('token', datos.access_token)
     localStorage.setItem('nombre', datos.nombre)
     localStorage.setItem('rol', datos.rol)
+    localStorage.setItem('usuario_id', datos.usuario_id)
 
     setToken(datos.access_token)
     setNombre(datos.nombre)
     setRol(datos.rol)
+    setUsuarioId(datos.usuario_id)
 
     alreadyLoggedOut.current = false   
     setExpirada(null)                 
@@ -61,10 +66,12 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('token')
     localStorage.removeItem('nombre')
     localStorage.removeItem('rol')
+    localStorage.removeItem('usuario_id')
 
     setToken(null)
     setNombre(null)
     setRol(null)
+    setUsuarioId(null)
 
     if (source === '401') {
       setExpirada('Sesión expirada, vuelva a iniciar sesión')
@@ -85,7 +92,7 @@ export function AuthProvider({ children }) {
   }, [logout])
 
   return (
-    <AuthContext.Provider value={{ token, nombre, rol, expirada, login, logout }}>
+    <AuthContext.Provider value={{ token, nombre, rol, usuarioId, expirada, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

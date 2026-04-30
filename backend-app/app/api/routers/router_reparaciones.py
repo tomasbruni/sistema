@@ -161,6 +161,20 @@ def crear_reparacion(
             nueva.fecha_ingreso = start_of_day(data.fecha_ingreso)
 
         session.add(nueva)
+        session.flush()  # obtener nueva.reparacion_id sin cerrar la transacción
+
+        movimiento = MovimientoReparacion(
+            reparacion_id=nueva.reparacion_id,
+            tipo_movimiento="CREACION",
+            estado_anterior=None,
+            estado_nuevo=data.estado_inicial,
+            pago_parcial_agregado=nueva.pago_parcial,
+            monto_nuevo=nueva.total,
+            usuario_id=usuario_id,
+        )
+        if current_user.rol == "admin" and data.fecha_ingreso is not None:
+            movimiento.fecha = start_of_day(data.fecha_ingreso)
+        session.add(movimiento)
         session.commit()
         session.refresh(nueva)
         return {"mensaje": "Reparación creada exitosamente", "reparacion": nueva}
@@ -183,7 +197,11 @@ def actualizar_reparacion(
 ):
     reparacion = _get_or_404(reparacion_id, session)
     try:
-        for key, value in data.model_dump(exclude_unset=True).items():
+        update_data = data.model_dump(exclude_unset=True)
+        if current_user.rol != "admin":
+            update_data.pop("pagado", None)
+            update_data.pop("pago_reparador", None)
+        for key, value in update_data.items():
             setattr(reparacion, key, value)
         session.commit()
         session.refresh(reparacion)
@@ -265,7 +283,7 @@ def cambio_de_pago_parcial(
         reparacion.pago_parcial = data.nuevo_monto
         movimiento = MovimientoReparacion(
             reparacion_id=reparacion_id,
-            tipo_movimiento="CAMBIO_PAGO_PARCIAL",
+            tipo_movimiento="CAMBIO_ADELANTO",
             estado_anterior=reparacion.estado,
             estado_nuevo=reparacion.estado,
             monto_anterior=pago_parcial_anterior,
@@ -360,9 +378,10 @@ def aceptar(
         movimiento = MovimientoReparacion(
             reparacion_id=reparacion_id,
             tipo_movimiento="CAMBIO_ESTADO",
-            estado_anterior=reparacion.estado,
-            estado_nuevo="EN_REPARACION",
+            estado_anterior="EN_REVISION",
+            estado_nuevo=reparacion.estado,
             pago_parcial_agregado=pago_parcial_agregado_final, #type: ignore
+            monto_nuevo=reparacion.total,
             usuario_id=usuario_id,
             observaciones=data.observaciones,
         )
@@ -562,18 +581,11 @@ def _bloque_patron(W, s):
     return tbl
 
 
-def _bloque_firma(W, s):
-    firma_data = [
-        [Paragraph("___________________________", s["normal9"]), Paragraph("___________________________", s["normal9"])],
-        [Paragraph("Firma del cliente", s["small8"]),            Paragraph("Aclaración", s["small8"])],
+def _bloque_firma(s):
+    return [
+        Paragraph("___________________________", s["normal9"]),
+        Paragraph("Firma y aclaración del cliente", s["small8"]),
     ]
-    tbl = Table(firma_data, colWidths=[W * 0.5, W * 0.5])
-    tbl.setStyle(TableStyle([
-        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-    ]))
-    return tbl
 
 
 # ── PDF: Certificado de recepción (estado-consciente) ─────────────────────────
@@ -590,7 +602,7 @@ def certificado_recepcion(
 
     es_revision = rep.estado == "EN_REVISION"
 
-    fecha_str   = rep.fecha_ingreso.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M") if rep.fecha_ingreso else "-"
+    fecha_str   = rep.fecha_ingreso.astimezone(TZ_AR).strftime("%d/%m/%Y") if rep.fecha_ingreso else "-"
     local_str   = local.nombre   if local   else "-"
 
     buf = io.BytesIO()
@@ -603,7 +615,7 @@ def certificado_recepcion(
 
     story = []
 
-    titulo_texto = "CERTIFICADO DE RECEPCIÓN — REVISIÓN TÉCNICA" if es_revision else "CERTIFICADO DE RECEPCIÓN — REPARACIÓN"
+    titulo_texto = "PLANILLA DE RECEPCIÓN — REVISIÓN TÉCNICA" if es_revision else "PLANILLA DE RECEPCIÓN — REPARACIÓN"
     story.append(Paragraph(titulo_texto, s["titulo"]))
     story.append(Paragraph(f"N° {reparacion_id:04d}  —  {local_str}  —  {fecha_str}", s["subtitulo"]))
     story.append(HRFlowable(width=W, thickness=1, color=colors.black, spaceAfter=5))
@@ -670,7 +682,7 @@ def certificado_recepcion(
 
     story.append(Paragraph(texto_legal, s["legal"]))
     story.append(Spacer(1, 8*mm))
-    story.append(_bloque_firma(W, s))
+    story.extend(_bloque_firma(s))
 
     doc.build(story)
     filename = f"recepcion_{reparacion_id:04d}.pdf"
@@ -811,11 +823,6 @@ def certificado_garantia(
         "FIRMA Y ACLARACIÓN DEL CLIENTE: " + "_" * 52,
         normal9,
     ))
-    story.append(Spacer(1, 6*mm))
-    story.append(Paragraph(
-        "DNI N°: " + "_" * 30,
-        normal9,
-    ))
 
     doc.build(story)
     pdf_bytes = buf.getvalue()
@@ -852,7 +859,7 @@ def certificado_cancelacion(
 
     monto_a_devolver = mov_cancelacion.monto_a_devolver if mov_cancelacion else 0
     fecha_cancelacion = (
-        mov_cancelacion.fecha.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M")
+        mov_cancelacion.fecha.astimezone(TZ_AR).strftime("%d/%m/%Y")
         if mov_cancelacion and mov_cancelacion.fecha else "-"
     )
 
@@ -907,25 +914,7 @@ def certificado_cancelacion(
     story.append(Paragraph(texto_legal, s["legal"]))
     story.append(Spacer(1, 10*mm))
 
-    firma_data = [
-        [
-            Paragraph("___________________________", s["normal9"]),
-            Paragraph("___________________________", s["normal9"]),
-            Paragraph("___________________________", s["normal9"]),
-        ],
-        [
-            Paragraph("Firma del cliente", s["small8"]),
-            Paragraph("Aclaración", s["small8"]),
-            Paragraph("DNI", s["small8"]),
-        ],
-    ]
-    tbl_firma = Table(firma_data, colWidths=[W * 0.38, W * 0.38, W * 0.24])
-    tbl_firma.setStyle(TableStyle([
-        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-    ]))
-    story.append(tbl_firma)
+    story.extend(_bloque_firma(s))
 
     doc.build(story)
     filename = f"cancelacion_{reparacion_id:04d}.pdf"

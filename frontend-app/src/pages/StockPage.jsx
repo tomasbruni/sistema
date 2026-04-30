@@ -9,6 +9,7 @@ import SearchableSelect from '../components/SearchableSelect/SearchableSelect'
 import SelectorLocalObs from '../components/stock/SelectorLocalObs.jsx'
 import AgregarProducto from '../components/stock/AgregarProducto.jsx'
 import CarritoProductos from '../components/stock/CarritoProductos.jsx'
+import ModalExportarStock from '../components/stock/ModalExportarStock.jsx'
 import { useAuth } from '../hooks/useAuth.jsx'
 import { descargarIngresoPdf, descargarTransferenciaPdf } from '../helpers/pdf'
 // ─── MODO DE VISTA ────────────────────────────────────────────────────────────
@@ -58,7 +59,8 @@ export default function StockPage() {
   const { options, buscadorSelect } = 
           useSelectOptions(['accesorios','tipos', 'subtipos'])
  
-  const [loadingExport, setLoadingExport] = useState(false)
+  const [loadingExport, setLoadingExport]         = useState(false)
+  const [modalExportAbierto, setModalExportAbierto] = useState(false)
 
   // ── Panel de exportación por exclusión ────────────────────────────────────
   const [panelExportAbierto, setPanelExportAbierto] = useState(false)
@@ -75,14 +77,14 @@ export default function StockPage() {
   const handleExportarPorExclusion = async () => {
     setLoadingExportExclusion(true)
     try {
-      const blob = await api.exportarStockPorExclusion({
+      const { blob, filename } = await api.exportarStockPorExclusion({
         excluir_tipo_ids: tiposExcluidos.length > 0 ? tiposExcluidos.join(',') : null,
         local_id: localExportId,
       })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = 'stock.xlsx'
+      link.download = filename
       link.click()
       URL.revokeObjectURL(url)
     } catch (err) {
@@ -96,19 +98,20 @@ export default function StockPage() {
   const { rol } = useAuth()
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
-  const handleExportar = async () => {
+  const handleExportar = async (mostrarListado) => {
     setLoadingExport(true)
     try {
-      const blob = await api.exportarStock({
+      const { blob, filename } = await api.exportarStock({
         buscar: busqueda, tipo_id: filtroTipoId, subtipo_id: filtroSubtipoId,
-        local_id: filtroLocalId, activo: filtroActivo,
+        local_id: filtroLocalId, activo: filtroActivo, mostrar_listado: mostrarListado,
       })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = 'stock.xlsx'
+      link.download = filename
       link.click()
       URL.revokeObjectURL(url)
+      setModalExportAbierto(false)
     } catch (err) {
       mostrarAlerta('error', `Error al exportar: ${err.message}`)
     } finally {
@@ -537,10 +540,9 @@ export default function StockPage() {
                 {rol === 'admin' &&
                 <button
                   className="btn btn-export"
-                  onClick={handleExportar}
-                  disabled={loadingExport}
+                  onClick={() => setModalExportAbierto(true)}
                 >
-                  {loadingExport ? 'Exportando...' : '⬇ Exportar Excel con filtros'}
+                  ⬇ Exportar Excel con filtros
                 </button>
                 }
                 {rol === 'admin' &&
@@ -666,7 +668,7 @@ export default function StockPage() {
                           onChange={(id) => {
                             handleFiltroSubtipo(id)
                           }}
-                          onSearch={(t) => buscadorSelect('subtipos', t)}
+                          onSearch={(t) => buscadorSelect('subtipos', t, {tipo_id: filtroTipoId})}
                           placeholder="Filtrar por subtipo"
                         />
                     </div>
@@ -740,6 +742,13 @@ export default function StockPage() {
             </>
           )}
         </>
+      )}
+      {modalExportAbierto && (
+        <ModalExportarStock
+          onConfirm={handleExportar}
+          onClose={() => setModalExportAbierto(false)}
+          loading={loadingExport}
+        />
       )}
     </div>
   )

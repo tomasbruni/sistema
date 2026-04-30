@@ -90,7 +90,6 @@ def _build_pdf(
     detalles_by_venta: dict,
     pagos_by_venta: dict,
     egresos: list,
-    reparaciones_creadas: list,
     movimientos_rep: list,  # list of (MovimientoReparacion, Reparacion)
     sobrante: int = 0,
     faltante: int = 0,
@@ -168,12 +167,12 @@ def _build_pdf(
     # ── Tabla ventas ──
     story.append(Paragraph("VENTAS", seccion))
  
+    #VAMOS A ELIMINAR LA COLUMNA CODIGO
     col_widths = [
         W*0.04,  # ID
         W*0.06,  # tipo venta
         W*0.075,  # tipo prod
-        W*0.22,  # nombre
-        W*0.13,  # código
+        W*0.35,  # nombre
         W*0.08,  # p.lista
         W*0.08,  # p.unit
         W*0.05,  # cant
@@ -181,12 +180,17 @@ def _build_pdf(
         W*0.10,  # total
     ]
     header_row = [Paragraph(t, header_cel) for t in
-        ["ID","Tipo","Gen.","Nombre","Código","P.Lista","Cobrado","Cant.","Pagos","Total"]]
+        ["ID","Tipo","Gen.","Nombre","P.Lista","Cobrado","Cant.","Pagos","Total"]]
  
     data       = [header_row]
     span_cmds  = []
     row_idx    = 1
- 
+
+    _abrev = {"ACCESORIO": "ACC", "CELULAR": "CEL", "CHIP": "CHIP"}
+
+    celulares_en_ventas = []  # (venta_id, nombre, codigo)
+    chips_en_ventas = []       # (venta_id, nombre, codigo)
+
     for v_idx, v in enumerate(sorted(ventas, key=lambda x: x.fecha_ingreso)):
         detalles  = detalles_by_venta.get(v.venta_id, [])
         pagos     = pagos_by_venta.get(v.venta_id, [])
@@ -209,24 +213,26 @@ def _build_pdf(
                 c_id = c_tipo = c_pagos = c_total = Paragraph("", cell)
  
             if det:
-                _abrev = {"ACCESORIO": "ACC", "CELULAR": "CEL", "CHIP": "CHIP"}
                 c_prod   = Paragraph(_abrev.get(det["tipo_producto"], det["tipo_producto"]), cell) #type: ignore
                 c_nombre = Paragraph(det["nombre_producto"], cell)
-                c_codigo = Paragraph(det.get("codigo") or "-", cell)
                 c_lista  = Paragraph(_fmt_pesos(det["precio_lista"]), cell)
                 c_unit   = Paragraph(_fmt_pesos(det["precio_unitario"]), cell)
                 c_cant   = Paragraph(str(det["cantidad"]), cell)
+                if det["tipo_producto"] == "CELULAR":
+                    celulares_en_ventas.append((v.venta_id, det["nombre_producto"], det.get("codigo") or "-"))
+                elif det["tipo_producto"] == "CHIP":
+                    chips_en_ventas.append((v.venta_id, det["nombre_producto"], det.get("codigo") or "-"))
             else:
-                c_prod=c_nombre=c_codigo=c_lista=c_unit=c_cant=Paragraph("-",cell)
+                c_prod=c_nombre=c_lista=c_unit=c_cant=Paragraph("-",cell)
  
-            data.append([c_id,c_tipo,c_prod,c_nombre,c_codigo,c_lista,c_unit,c_cant,c_pagos,c_total])
+            data.append([c_id,c_tipo,c_prod,c_nombre,c_lista,c_unit,c_cant,c_pagos,c_total])
             row_idx += 1 #en la ultima iteracion(ultimo detalle), row_idx apunta a la proxima fila libre, por eso s y e estan bien calculados
  
         s = row_idx - n
         e = row_idx - 1
         span_cmds.append(("BOX", (0, s), (-1, e), 0.7, colors.black))
         if n > 1:
-            for col in [0,1,8,9]: # alarga las columnas al largo de las filas de los detalles
+            for col in [0,1,7,8]:
                 span_cmds.append(("SPAN",(col,s),(col,e)))
  
     t_style = [
@@ -248,7 +254,41 @@ def _build_pdf(
     ventas_tbl.setStyle(TableStyle(t_style + span_cmds)) # los comandos generados dinamicamente para cada venta segun sus detalles
     story.append(ventas_tbl)
     story.append(Spacer(1, 8))
- 
+
+    _subtbl_style = [
+        ("FONTSIZE",      (0,0),(-1,-1),7.5),
+        ("GRID",          (0,0),(-1,-1),0.25, GRID_COLOR),
+        ("LINEBELOW",     (0,0),(-1,0), 0.75, colors.black),
+        ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
+        ("VALIGN",        (0,0),(-1,-1),"TOP"),
+        ("LEFTPADDING",   (0,0),(-1,-1),3),
+        ("RIGHTPADDING",  (0,0),(-1,-1),3),
+        ("TOPPADDING",    (0,0),(-1,-1),2),
+        ("BOTTOMPADDING", (0,0),(-1,-1),2),
+    ]
+
+    if celulares_en_ventas:
+        story.append(Paragraph("CELULARES", seccion))
+        cel_data = [[Paragraph(t, header_cel) for t in ["ID Venta", "Celular", "IMEI"]]] + [
+            [Paragraph(str(vid), cell), Paragraph(nombre, cell), Paragraph(codigo, cell)]
+            for vid, nombre, codigo in celulares_en_ventas
+        ]
+        cel_tbl = Table(cel_data, colWidths=[W*0.10, W*0.55, W*0.35], repeatRows=1)
+        cel_tbl.setStyle(TableStyle(_subtbl_style))
+        story.append(cel_tbl)
+        story.append(Spacer(1, 6))
+
+    if chips_en_ventas:
+        story.append(Paragraph("CHIPS", seccion))
+        chip_data = [[Paragraph(t, header_cel) for t in ["ID Venta", "Chip", "Nro. Serie"]]] + [
+            [Paragraph(str(vid), cell), Paragraph(nombre, cell), Paragraph(codigo, cell)]
+            for vid, nombre, codigo in chips_en_ventas
+        ]
+        chip_tbl = Table(chip_data, colWidths=[W*0.10, W*0.55, W*0.35], repeatRows=1)
+        chip_tbl.setStyle(TableStyle(_subtbl_style))
+        story.append(chip_tbl)
+        story.append(Spacer(1, 6))
+
     # ── Totales ventas ──
     # esto es sum pagos ef ventas - sum pagos ef devoluciones
     # esto es sum pagos el ventas - sum pagos el devoluciones
@@ -334,94 +374,107 @@ def _build_pdf(
     ]))
     story.append(neto_row)
 
-    # # ── Reparaciones ──
-    # story.append(PageBreak())
-    # story.append(_enc_table())
-    # story.append(Spacer(1, 6))
-    # story.append(Paragraph("REPARACIONES", seccion))
+    # ── Reparaciones ──
+    story.append(PageBreak())
+    story.append(_enc_table())
+    story.append(Spacer(1, 6))
+    story.append(Paragraph("REPARACIONES", seccion))
 
-    # rep_ef = sum(r.adelanto for r in reparaciones_creadas)
-    # rep_ef += sum(
-    #     mov.monto_entrega_recibido
-    #     for mov, _ in movimientos_rep
-    #     if mov.estado_nuevo == "ENTREGADO" and mov.monto_entrega_recibido
-    # )
-    # ef_total += rep_ef
+    rep_ef = sum(
+        mov.pago_parcial_agregado
+        for mov, _ in movimientos_rep
+        if mov.tipo_movimiento == "CREACION" and mov.pago_parcial_agregado
+    )
+    rep_ef += sum(
+        mov.monto_entrega_recibido
+        for mov, _ in movimientos_rep
+        if mov.estado_nuevo == "ENTREGADO" and mov.monto_entrega_recibido
+    )
 
-    # hay_movimientos_rep = reparaciones_creadas or movimientos_rep
-    # if not hay_movimientos_rep:
-    #     story.append(Paragraph("Sin movimientos de reparaciones en el período.", styles["Normal"]))
-    # else:
-    #     rep_col_widths = [W*0.05, W*0.15, W*0.23, W*0.22, W*0.17, W*0.18]
-    #     rep_header = [Paragraph(t, header_cel) for t in
-    #         ["ID", "Tipo", "Celular", "Cliente", "Movimiento", "Monto cobrado"]]
-    #     rep_data = [rep_header]
+    if not movimientos_rep:
+        story.append(Paragraph("Sin movimientos de reparaciones en el período.", styles["Normal"]))
+    else:
+        rep_col_widths = [W*0.05, W*0.15, W*0.23, W*0.22, W*0.17, W*0.18]
+        rep_header = [Paragraph(t, header_cel) for t in
+            ["ID", "Tipo", "Celular", "Cliente", "Movimiento", "Monto cobrado"]]
+        rep_data = [rep_header]
 
-    #     for r in reparaciones_creadas:
-    #         rep_data.append([
-    #             Paragraph(str(r.reparacion_id), cell),
-    #             Paragraph("CREACION", cell),
-    #             Paragraph(r.celular, cell),
-    #             Paragraph(r.nombre_cliente, cell),
-    #             Paragraph("Adelanto", cell),
-    #             Paragraph(_fmt_pesos(r.adelanto), cell_bold),
-    #         ])
+        for mov, rep in movimientos_rep:
+            if mov.tipo_movimiento == "CREACION":
+                tipo_label = "REVISION" if mov.estado_nuevo == "EN_REVISION" else "EN REPARACION"
+                mov_label = "Adelanto"
+                monto_str = _fmt_pesos(mov.pago_parcial_agregado) if mov.pago_parcial_agregado else "-"
+                monto_style = cell_bold
+            elif mov.tipo_movimiento == "CAMBIO_ESTADO" and mov.estado_nuevo == "ENTREGADO":
+                tipo_label = "ENTREGA"
+                mov_label = "Saldo restante"
+                monto_str = _fmt_pesos(mov.monto_entrega_recibido) if mov.monto_entrega_recibido else "-"
+                monto_style = cell_bold
+            elif mov.tipo_movimiento == "CAMBIO_ESTADO" and mov.estado_nuevo == "EN_REPARACION":
+                tipo_label = "ACEPTADA"
+                mov_label = "Cliente acepta" # total final y restan pagar estan en la reparacion, no son relevantes en este movimiento
+                monto_str = _fmt_pesos(mov.pago_parcial_agregado)
+                monto_style = cell
+            elif mov.tipo_movimiento == "CAMBIO_ESTADO": # PARA DEVOLUCIONES Y GARANTIA
+                tipo_label = "CAMBIO ESTADO"
+                mov_label = f"{mov.estado_anterior} → {mov.estado_nuevo}"
+                monto_str = "-"
+                monto_style = cell
+            elif mov.tipo_movimiento == "CAMBIO_ADELANTO":
+                tipo_label = "MOD. ADELANTO"
+                mov_label = f"{_fmt_pesos(mov.monto_anterior)} → {_fmt_pesos(mov.monto_nuevo)}" if mov.monto_anterior is not None else "-"
+                monto_str = _fmt_pesos(mov.monto_nuevo - mov.monto_anterior)
+                monto_style = cell
+            elif mov.tipo_movimiento == "CAMBIO_PRECIO":  # CAMBIO_PRECIO
+                tipo_label = "CAMBIO TOTAL REP"
+                mov_label = f"{_fmt_pesos(mov.monto_anterior)} → {_fmt_pesos(mov.monto_nuevo)}" if mov.monto_anterior is not None else "-"
+                monto_str = "-"
+                monto_style = cell
+            else: #CANCELACION
+                tipo_label = "CANCELACION"
+                mov_label = "Se devuelven -> "
+                monto_str =f"{_fmt_pesos(mov.monto_a_devolver)}" if mov.monto_a_devolver > 0 else "-" 
+                monto_style = cell
 
-    #     for mov, rep in movimientos_rep:
-    #         if mov.tipo_movimiento == "CAMBIO_ESTADO" and mov.estado_nuevo == "ENTREGADO":
-    #             tipo_label = "ENTREGA"
-    #             mov_label = "Saldo restante"
-    #             monto_str = _fmt_pesos(mov.monto_entrega_recibido) if mov.monto_entrega_recibido else "-"
-    #             monto_style = cell_bold
-    #         elif mov.tipo_movimiento == "CAMBIO_ESTADO":
-    #             tipo_label = "CAMBIO ESTADO"
-    #             mov_label = f"{mov.estado_anterior} → {mov.estado_nuevo}"
-    #             monto_str = "-"
-    #             monto_style = cell
-    #         else:  # CAMBIO_PRECIO
-    #             tipo_label = "CAMBIO PRECIO"
-    #             mov_label = f"{_fmt_pesos(mov.monto_total_anterior)} → {_fmt_pesos(mov.monto_total_nuevo)}" if mov.monto_total_anterior is not None else "-"
-    #             monto_str = "-"
-    #             monto_style = cell
-    #         rep_data.append([
-    #             Paragraph(str(rep.reparacion_id), cell),
-    #             Paragraph(tipo_label, cell),
-    #             Paragraph(rep.celular, cell),
-    #             Paragraph(rep.nombre_cliente, cell),
-    #             Paragraph(mov_label, cell),
-    #             Paragraph(monto_str, monto_style),
-    #         ])
+            rep_data.append([
+                Paragraph(str(rep.reparacion_id), cell),
+                Paragraph(tipo_label, cell),
+                Paragraph(rep.celular, cell),
+                Paragraph(rep.nombre_cliente, cell),
+                Paragraph(mov_label, cell),
+                Paragraph(monto_str, monto_style),
+            ])
 
-    #     rep_style = [
-    #         ("FONTSIZE",      (0,0),(-1,-1),7.5),
-    #         ("GRID",          (0,0),(-1,-1),0.25, GRID_COLOR),
-    #         ("LINEBELOW",     (0,0),(-1,0), 0.75, colors.black),
-    #         ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
-    #         ("VALIGN",        (0,0),(-1,-1),"TOP"),
-    #         ("LEFTPADDING",   (0,0),(-1,-1),3),
-    #         ("RIGHTPADDING",  (0,0),(-1,-1),3),
-    #         ("TOPPADDING",    (0,0),(-1,-1),2),
-    #         ("BOTTOMPADDING", (0,0),(-1,-1),2),
-    #     ]
-    #     rep_tbl = Table(rep_data, colWidths=rep_col_widths, repeatRows=1)
-    #     rep_tbl.setStyle(TableStyle(rep_style))
-    #     story.append(rep_tbl)
+        rep_style = [
+            ("FONTSIZE",      (0,0),(-1,-1),7.5),
+            ("GRID",          (0,0),(-1,-1),0.25, GRID_COLOR),
+            ("LINEBELOW",     (0,0),(-1,0), 0.75, colors.black),
+            ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
+            ("VALIGN",        (0,0),(-1,-1),"TOP"),
+            ("LEFTPADDING",   (0,0),(-1,-1),3),
+            ("RIGHTPADDING",  (0,0),(-1,-1),3),
+            ("TOPPADDING",    (0,0),(-1,-1),2),
+            ("BOTTOMPADDING", (0,0),(-1,-1),2),
+        ]
+        rep_tbl = Table(rep_data, colWidths=rep_col_widths, repeatRows=1)
+        rep_tbl.setStyle(TableStyle(rep_style))
+        story.append(rep_tbl)
 
-    # story.append(Spacer(1, 4))
-    # rep_subtotal = Table(
-    #     [[Paragraph("TOTAL REPARACIONES (efectivo)", bold), Paragraph(_fmt_pesos(rep_ef), bold)]],
-    #     colWidths=[W*0.82, W*0.18],
-    # )
-    # rep_subtotal.setStyle(TableStyle([
-    #     ("FONTSIZE",      (0,0),(-1,-1),9),
-    #     ("ALIGN",         (1,0),(1,-1),"RIGHT"),
-    #     ("TOPPADDING",    (0,0),(-1,-1),2),
-    #     ("BOTTOMPADDING", (0,0),(-1,-1),2),
-    #     ("LEFTPADDING",   (0,0),(-1,-1),4),
-    #     ("RIGHTPADDING",  (0,0),(-1,-1),4),
-    #     ("LINEABOVE",     (0,0),(-1,-1),0.75,colors.black),
-    # ]))
-    # story.append(rep_subtotal)
+    story.append(Spacer(1, 4))
+    rep_subtotal = Table(
+        [[Paragraph("TOTAL REPARACIONES (efectivo)", bold), Paragraph(_fmt_pesos(rep_ef), bold)]],
+        colWidths=[W*0.82, W*0.18],
+    )
+    rep_subtotal.setStyle(TableStyle([
+        ("FONTSIZE",      (0,0),(-1,-1),9),
+        ("ALIGN",         (1,0),(1,-1),"RIGHT"),
+        ("TOPPADDING",    (0,0),(-1,-1),2),
+        ("BOTTOMPADDING", (0,0),(-1,-1),2),
+        ("LEFTPADDING",   (0,0),(-1,-1),4),
+        ("RIGHTPADDING",  (0,0),(-1,-1),4),
+        ("LINEABOVE",     (0,0),(-1,-1),0.75,colors.black),
+    ]))
+    story.append(rep_subtotal)
 
     # ── Egresos ──
     story.append(Spacer(1, 10))
@@ -498,7 +551,7 @@ def _build_pdf(
 
     bal_data = [
         [Paragraph("Total final efectivo esperado", bold),
-         Paragraph("(ef. ventas + ef. reparaciones − egresos)", small),
+         Paragraph("(ef. ventas − egresos)", small),
          Paragraph(_fmt_pesos(ef_esperado), normal)],
         [Paragraph("Total final electrónico", bold),
          Paragraph("(neto electrónico)", small),
@@ -647,16 +700,6 @@ def caja_diaria_pdf(
     )
     egresos = session.exec(eg_query).all()
 
-    # --- Reparaciones creadas en el rango ---
-    reparaciones_creadas = session.exec(
-        select(Reparacion)
-        .where(Reparacion.local_id == local_id)
-        .where(Reparacion.usuario_id == usuario_id)
-        .where(Reparacion.fecha_ingreso >= dt_desde)  # type: ignore
-        .where(Reparacion.fecha_ingreso <= dt_hasta)  # type: ignore
-        .order_by(Reparacion.fecha_ingreso)  # type: ignore
-    ).all()
-
     # --- Movimientos de reparaciones del rango (join para filtrar por local y usuario) ---
     movimientos_rep = session.exec(
         select(MovimientoReparacion, Reparacion)
@@ -690,7 +733,6 @@ def caja_diaria_pdf(
         detalles_by_venta=detalles_by_venta,
         pagos_by_venta=pagos_by_venta,
         egresos=list(egresos),
-        reparaciones_creadas=list(reparaciones_creadas),
         movimientos_rep=list(movimientos_rep),
         sobrante=sf_sobrante,
         faltante=sf_faltante,

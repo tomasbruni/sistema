@@ -5,7 +5,7 @@ import { useAlerta } from '../hooks/useAlerta'
 import { useAuth } from '../hooks/useAuth'
 import { useModalDetalle } from '../hooks/ventas/useModalDetalles'
 import ModalHistorialReparaciones from '../components/reparaciones/ModalHistorialReparaciones'
-import { formatFecha, formatPrecio } from '../helpers/formats'
+import { formatFecha, formatFechaCorta, formatPrecio } from '../helpers/formats'
 
 const ESTADOS = ['EN_REVISION', 'EN_REPARACION', 'ENTREGADO', 'CANCELADO', 'REPARACION_GARANTIA', 'ENTREGADO_GARANTIA']
 
@@ -28,6 +28,7 @@ const formEditarVacio = {
   descripcion:      '',
   pago_parcial:     '',
   pago_reparador:   '',
+  pagado:           false,
   telefono_cliente: '',
   dni_cliente:      '',
   mail_cliente:     '',
@@ -35,8 +36,8 @@ const formEditarVacio = {
 
 export default function ReparacionesPage() {
   const { alerta, mostrarAlerta, cerrarAlerta } = useAlerta()
-  const { rol }    = useAuth()
-  const esAdmin    = rol === 'admin'
+  const { rol, usuarioId } = useAuth()
+  const esAdmin            = rol === 'admin'
 
   const [reparaciones, setReparaciones]   = useState([])
   const [loadingLista, setLoadingLista]   = useState(false)
@@ -63,45 +64,39 @@ export default function ReparacionesPage() {
   const [loadingEditar, setLoadingEditar] = useState(false)
 
   // Modal agregar monto
-  const [montoRepId, setMontoRepId]           = useState(null)
-  const [montoAgregar, setMontoAgregar]       = useState('')
-  const [montoObs, setMontoObs]               = useState('')
-  const [montoFecha, setMontoFecha]           = useState('')
-  const [montoUsuarioId, setMontoUsuarioId]   = useState('')
-  const [loadingMonto, setLoadingMonto]       = useState(false)
+  const [montoRepId, setMontoRepId]     = useState(null)
+  const [montoAgregar, setMontoAgregar] = useState('')
+  const [montoObs, setMontoObs]         = useState('')
+  const [loadingMonto, setLoadingMonto] = useState(false)
 
   // Modal cambio pago parcial
-  const [cambioPagoRepId, setCambioPagoRepId]         = useState(null)
-  const [cambioPagoMonto, setCambioPagoMonto]         = useState('')
-  const [cambioPagoObs, setCambioPagoObs]             = useState('')
-  const [cambioPagoFecha, setCambioPagoFecha]         = useState('')
-  const [cambioPagoUsuarioId, setCambioPagoUsuarioId] = useState('')
-  const [loadingCambioPago, setLoadingCambioPago]     = useState(false)
+  const [cambioPagoRepId, setCambioPagoRepId]     = useState(null)
+  const [cambioPagoMonto, setCambioPagoMonto]     = useState('')
+  const [cambioPagoObs, setCambioPagoObs]         = useState('')
+  const [loadingCambioPago, setLoadingCambioPago] = useState(false)
 
   // Modal aceptar (EN_REVISION → EN_REPARACION)
-  const [aceptarRepId, setAceptarRepId]           = useState(null)
-  const [aceptarTotal, setAceptarTotal]           = useState('')
+  const [aceptarRepId, setAceptarRepId]             = useState(null)
+  const [aceptarTotal, setAceptarTotal]             = useState('')
   const [aceptarPagoParcial, setAceptarPagoParcial] = useState('')
-  const [aceptarObs, setAceptarObs]               = useState('')
-  const [aceptarFecha, setAceptarFecha]           = useState('')
-  const [aceptarUsuarioId, setAceptarUsuarioId]   = useState('')
-  const [loadingAceptar, setLoadingAceptar]       = useState(false)
+  const [aceptarObs, setAceptarObs]                 = useState('')
+  const [loadingAceptar, setLoadingAceptar]         = useState(false)
 
   // Modal cancelar
-  const [cancelarRepId, setCancelarRepId]         = useState(null)
-  const [cancelarMonto, setCancelarMonto]         = useState('')
-  const [cancelarObs, setCancelarObs]             = useState('')
-  const [cancelarFecha, setCancelarFecha]         = useState('')
-  const [cancelarUsuarioId, setCancelarUsuarioId] = useState('')
-  const [loadingCancelar, setLoadingCancelar]     = useState(false)
+  const [cancelarRepId, setCancelarRepId]     = useState(null)
+  const [cancelarMonto, setCancelarMonto]     = useState('')
+  const [cancelarObs, setCancelarObs]         = useState('')
+  const [loadingCancelar, setLoadingCancelar] = useState(false)
 
   // Modal transición (entregar / garantia / entregar-garantia)
-  const [transRepId, setTransRepId]           = useState(null)
-  const [transAccion, setTransAccion]         = useState(null)
-  const [transObs, setTransObs]               = useState('')
-  const [transFecha, setTransFecha]           = useState('')
-  const [transUsuarioId, setTransUsuarioId]   = useState('')
-  const [loadingTrans, setLoadingTrans]       = useState(false)
+  const [transRepId, setTransRepId]     = useState(null)
+  const [transAccion, setTransAccion]   = useState(null)
+  const [transObs, setTransObs]         = useState('')
+  const [loadingTrans, setLoadingTrans] = useState(false)
+
+  // Campos admin compartidos — solo un modal abierto a la vez
+  const [adminFecha, setAdminFecha]         = useState('')
+  const [adminUsuarioId, setAdminUsuarioId] = useState('')
 
   // Historial
   const [historialRep, setHistorialRep] = useState(null)
@@ -227,6 +222,7 @@ export default function ReparacionesPage() {
       descripcion:      rep.descripcion ?? '',
       pago_parcial:     rep.pago_parcial,
       pago_reparador:   rep.pago_reparador ?? '',
+      pagado:           rep.pagado ?? false,
       telefono_cliente: rep.telefono_cliente,
       dni_cliente:      rep.dni_cliente ?? '',
       mail_cliente:     rep.mail_cliente ?? '',
@@ -248,6 +244,9 @@ export default function ReparacionesPage() {
       if (esAdmin && formEditar.pago_reparador !== '') {
         body.pago_reparador = Number(formEditar.pago_reparador)
       }
+      if (esAdmin) {
+        body.pagado = formEditar.pagado
+      }
       await api.actualizarReparacion(editandoId, body)
       mostrarAlerta('success', 'Reparación actualizada correctamente.')
       setEditandoId(null)
@@ -268,11 +267,11 @@ export default function ReparacionesPage() {
       await api.cambiarPrecioReparacion(montoRepId, {
         monto_agregado: Number(montoAgregar),
         observaciones:  montoObs.trim() || null,
-        ...(esAdmin && montoFecha     ? { fecha: montoFecha } : {}),
-        ...(esAdmin && montoUsuarioId ? { usuario_id: Number(montoUsuarioId) } : {}),
+        ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+        ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Monto actualizado correctamente.')
-      setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setMontoFecha(''); setMontoUsuarioId('')
+      setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -296,11 +295,11 @@ export default function ReparacionesPage() {
       await api.cambioPagoParcialReparacion(cambioPagoRepId, {
         nuevo_monto:   Number(cambioPagoMonto),
         observaciones: cambioPagoObs.trim() || null,
-        ...(esAdmin && cambioPagoFecha     ? { fecha: cambioPagoFecha } : {}),
-        ...(esAdmin && cambioPagoUsuarioId ? { usuario_id: Number(cambioPagoUsuarioId) } : {}),
+        ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+        ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Pago parcial actualizado correctamente.')
-      setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs(''); setCambioPagoFecha(''); setCambioPagoUsuarioId('')
+      setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -324,11 +323,11 @@ export default function ReparacionesPage() {
         total_final:           Number(aceptarTotal),
         pago_parcial_agregado: Number(aceptarPagoParcial),
         observaciones:         aceptarObs.trim() || null,
-        ...(esAdmin && aceptarFecha     ? { fecha: aceptarFecha } : {}),
-        ...(esAdmin && aceptarUsuarioId ? { usuario_id: Number(aceptarUsuarioId) } : {}),
+        ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+        ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Reparación aceptada correctamente.')
-      setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs(''); setAceptarFecha(''); setAceptarUsuarioId('')
+      setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -351,11 +350,11 @@ export default function ReparacionesPage() {
       await api.cancelarReparacion(cancelarRepId, {
         monto_a_devolver: cancelarMonto !== '' ? Number(cancelarMonto) : null,
         observaciones:    cancelarObs.trim() || null,
-        ...(esAdmin && cancelarFecha     ? { fecha: cancelarFecha } : {}),
-        ...(esAdmin && cancelarUsuarioId ? { usuario_id: Number(cancelarUsuarioId) } : {}),
+        ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+        ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Reparación cancelada.')
-      setCancelarRepId(null); setCancelarMonto(''); setCancelarObs(''); setCancelarFecha(''); setCancelarUsuarioId('')
+      setCancelarRepId(null); setCancelarMonto(''); setCancelarObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -377,15 +376,15 @@ export default function ReparacionesPage() {
     setLoadingTrans(true)
     const body = {
       observaciones: transObs.trim() || null,
-      ...(esAdmin && transFecha     ? { fecha: transFecha } : {}),
-      ...(esAdmin && transUsuarioId ? { usuario_id: Number(transUsuarioId) } : {}),
+      ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+      ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
     }
     try {
       if (transAccion === 'entregar')               await api.entregarReparacion(transRepId, body)
       else if (transAccion === 'garantia')          await api.garantiaReparacion(transRepId, body)
       else if (transAccion === 'entregar-garantia') await api.entregarGarantiaReparacion(transRepId, body)
       mostrarAlerta('success', 'Reparación actualizada correctamente.')
-      setTransRepId(null); setTransAccion(null)
+      setTransRepId(null); setTransAccion(null); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -407,11 +406,12 @@ export default function ReparacionesPage() {
   const cerrarTodo = () => {
     setMostrarCrear(false); setFormCrear(formCrearVacio)
     setEditandoId(null)
-    setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setMontoFecha(''); setMontoUsuarioId('')
-    setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs(''); setCambioPagoFecha(''); setCambioPagoUsuarioId('')
-    setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs(''); setAceptarFecha(''); setAceptarUsuarioId('')
-    setCancelarRepId(null); setCancelarMonto(''); setCancelarObs(''); setCancelarFecha(''); setCancelarUsuarioId('')
-    setTransRepId(null); setTransAccion(null); setTransObs(''); setTransFecha(''); setTransUsuarioId('')
+    setMontoRepId(null); setMontoAgregar(''); setMontoObs('')
+    setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs('')
+    setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs('')
+    setCancelarRepId(null); setCancelarMonto(''); setCancelarObs('')
+    setTransRepId(null); setTransAccion(null); setTransObs('')
+    setAdminFecha(''); setAdminUsuarioId('')
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -445,16 +445,15 @@ export default function ReparacionesPage() {
     'entregar-garantia': 'Entregar garantía',
   }[accion] ?? accion)
 
-  const adminCampos = (fecha, setFecha, usuarioId, setUsuarioId) => esAdmin && (
+  const adminCampos = () => esAdmin && (
     <div className="form-row">
       <div className="form-group">
         <label>Fecha</label>
-        <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
+        <input type="date" value={adminFecha} onChange={e => setAdminFecha(e.target.value)} />
       </div>
       <div className="form-group">
         <label>Vendedor/a</label>
-        <select value={usuarioId} onChange={e => setUsuarioId(e.target.value)}>
-          <option value="">Usuario actual</option>
+        <select value={adminUsuarioId || usuarioId || ''} onChange={e => setAdminUsuarioId(e.target.value)}>
           {usuarios.map(u => <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>)}
         </select>
       </div>
@@ -583,9 +582,8 @@ export default function ReparacionesPage() {
                 </div>
                 <div className="form-group">
                   <label>Vendedor/a</label>
-                  <select value={formCrear.usuario_id}
+                  <select value={formCrear.usuario_id || usuarioId || ''}
                     onChange={e => setFormCrear(p => ({ ...p, usuario_id: e.target.value }))}>
-                    <option value="">Usuario actual</option>
                     {usuarios.map(u => <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>)}
                   </select>
                 </div>
@@ -646,6 +644,14 @@ export default function ReparacionesPage() {
                     onChange={e => setFormEditar(p => ({ ...p, pago_reparador: e.target.value }))} />
                 </div>
               )}
+              {esAdmin && (
+                <div className="form-group" style={{ justifyContent: 'center' }}>
+                  <label>Pagado al reparador</label>
+                  <input type="checkbox" checked={formEditar.pagado}
+                    onChange={e => setFormEditar(p => ({ ...p, pagado: e.target.checked }))}
+                    style={{ width: 'auto', marginTop: 10 }} />
+                </div>
+              )}
             </div>
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
@@ -675,7 +681,7 @@ export default function ReparacionesPage() {
                   onChange={e => setMontoObs(e.target.value)} placeholder="Motivo (opcional)" />
               </div>
             </div>
-            {adminCampos(montoFecha, setMontoFecha, montoUsuarioId, setMontoUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setMontoRepId(null); setMontoAgregar(''); setMontoObs('') }}
@@ -705,7 +711,7 @@ export default function ReparacionesPage() {
                   onChange={e => setCambioPagoObs(e.target.value)} placeholder="Motivo de la corrección (opcional)" />
               </div>
             </div>
-            {adminCampos(cambioPagoFecha, setCambioPagoFecha, cambioPagoUsuarioId, setCambioPagoUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs('') }}
@@ -745,7 +751,7 @@ export default function ReparacionesPage() {
                   onChange={e => setAceptarObs(e.target.value)} placeholder="Diagnóstico, notas (opcional)" />
               </div>
             </div>
-            {adminCampos(aceptarFecha, setAceptarFecha, aceptarUsuarioId, setAceptarUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial('') }}
@@ -775,7 +781,7 @@ export default function ReparacionesPage() {
                   onChange={e => setCancelarObs(e.target.value)} placeholder="Opcional" />
               </div>
             </div>
-            {adminCampos(cancelarFecha, setCancelarFecha, cancelarUsuarioId, setCancelarUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setCancelarRepId(null); setCancelarMonto(''); setCancelarObs('') }}
@@ -800,7 +806,7 @@ export default function ReparacionesPage() {
                   onChange={e => setTransObs(e.target.value)} placeholder="Opcional" />
               </div>
             </div>
-            {adminCampos(transFecha, setTransFecha, transUsuarioId, setTransUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setTransRepId(null); setTransAccion(null) }}
@@ -888,6 +894,7 @@ export default function ReparacionesPage() {
                 <th>Total</th>
                 <th>Pago parcial</th>
                 {esAdmin && <th>Pago reparador</th>}
+                {esAdmin && <th>Pagado</th>}
                 <th>Estado</th>
                 <th>Vendedor/a</th>
                 <th>Acciones</th>
@@ -898,12 +905,13 @@ export default function ReparacionesPage() {
                 <React.Fragment key={rep.reparacion_id}>
                   <tr>
                     <td>{rep.reparacion_id}</td>
-                    <td>{formatFecha(rep.fecha_ingreso)}</td>
+                    <td>{formatFechaCorta(rep.fecha_ingreso)}</td>
                     <td>{rep.celular}</td>
                     <td>{rep.nombre_cliente}</td>
                     <td>{rep.total != null ? formatPrecio(rep.total) : '—'}</td>
                     <td>{formatPrecio(rep.pago_parcial)}</td>
                     {esAdmin && <td>{rep.pago_reparador != null ? formatPrecio(rep.pago_reparador) : '-'}</td>}
+                    {esAdmin && <td>{rep.pagado ? <span className="estado-badge activo">Sí</span> : <span className="estado-badge">No</span>}</td>}
                     <td>
                       <span className={`estado-badge ${estadoClase(rep.estado)}`}>
                         {rep.estado.replace(/_/g, ' ')}
@@ -947,7 +955,7 @@ export default function ReparacionesPage() {
                         </button>
                         <button className="btn btn-sm btn-secondary"
                           onClick={() => abrirCambioPago(rep)}>
-                          Corregir pago
+                          Corregir adelanto
                         </button>
                         <button className="btn btn-sm btn-secondary"
                           onClick={() => descargarPdf(

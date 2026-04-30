@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
-from datetime import date
+from datetime import date, datetime
 
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 
@@ -42,16 +42,15 @@ def exportar_stock(
     subtipo_id: Optional[int] = None,
     local_id: Optional[int] = None,
     activo: Optional[bool] = True,
+    mostrar_listado: bool = True,
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(require_admin)
 ):
-    """Exporta el stock filtrado a un archivo Excel."""
     statement = (
         select(StockAccesorio, Accesorio, Local)
         .join(Accesorio, StockAccesorio.accesorio_id == Accesorio.accesorio_id) #type: ignore
         .join(Local, StockAccesorio.local_id == Local.local_id) #type: ignore
     )
-
     if buscar:
         statement = statement.where(Accesorio.nombre.ilike(f"%{buscar}%")) #type: ignore
     if tipo_id is not None:
@@ -62,43 +61,115 @@ def exportar_stock(
         statement = statement.where(StockAccesorio.local_id == local_id)
     if activo is not None:
         statement = statement.where(Accesorio.activo == activo)
-
     resultados = session.exec(statement).all()
 
-    nombre_local = "todos"
+    # ── Nombres de filtros ────────────────────────────────────────────────────
+    local_nombre = "Todos"
     if local_id is not None:
         local_obj = session.get(Local, local_id)
         if local_obj:
-            nombre_local = local_obj.nombre.lower().replace(" ", "_")
+            local_nombre = local_obj.nombre
 
+    tipo_nombre = None
+    if tipo_id is not None:
+        tipo_obj = session.get(TipoAccesorio, tipo_id)
+        tipo_nombre = tipo_obj.nombre if tipo_obj else str(tipo_id)
+
+    subtipo_nombre = None
+    if subtipo_id is not None:
+        subtipo_obj = session.get(SubtipoAccesorio, subtipo_id)
+        subtipo_nombre = subtipo_obj.nombre if subtipo_obj else str(subtipo_id)
+
+    # ── Totales por subtipo (solo cuando hay tipo pero no subtipo) ────────────
+    subtipo_totales: dict = {}
+    if tipo_id is not None and subtipo_id is None:
+        subtipos = session.exec(
+            select(SubtipoAccesorio).where(SubtipoAccesorio.tipo_id == tipo_id)
+        ).all()
+        subtipo_map: dict = {s.subtipo_id: s.nombre for s in subtipos}
+        subtipo_map[None] = "(Sin subtipo)"
+        for stock, accesorio, _local in resultados:
+            sid = accesorio.subtipo_id
+            if sid not in subtipo_totales:
+                subtipo_totales[sid] = {"nombre": subtipo_map.get(sid, str(sid)), "cantidad": 0}
+            subtipo_totales[sid]["cantidad"] += stock.cantidad
+
+    total_cantidad = sum(stock.cantidad for stock, _, _ in resultados)
+
+    # ── Workbook ──────────────────────────────────────────────────────────────
     hoy = date.today().strftime("%Y%m%d")
-    filename = f"stock_{nombre_local}_{hoy}.xlsx"
+    local_fn = local_nombre.lower().replace(" ", "_") if local_id else "todos"
+    filename = f"stock_{local_fn}_{hoy}.xlsx"
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Stock" #type: ignore
 
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(fill_type="solid", fgColor="1A1A2E")
-    header_align = Alignment(horizontal="center")
+    DARK = "1A1A2E"
+    MID  = "3A3A5E"
 
-    columnas = ["ID", "Accesorio", "Local", "Cantidad", "Estado"]
-    for col_idx, titulo in enumerate(columnas, start=1):
-        cell = ws.cell(row=1, column=col_idx, value=titulo) #type: ignore
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = header_align
+    def hdr(row, col, value):
+        c = ws.cell(row=row, column=col, value=value) #type: ignore
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill(fill_type="solid", fgColor=DARK)
+        c.alignment = Alignment(horizontal="center")
+        return c
 
-    for stock, accesorio, local in resultados:
-        ws.append([ #type: ignore
-            accesorio.accesorio_id,
-            accesorio.nombre,
-            local.nombre,
-            stock.cantidad,
-            "Activo" if accesorio.activo else "Inactivo",
-        ])
+    def lbl(row, col, value):
+        c = ws.cell(row=row, column=col, value=value) #type: ignore
+        c.font = Font(bold=True)
+        return c
 
-    anchos = {"A": 14, "B": 40, "C": 20, "D": 12, "E": 12}
+    def summary_hdr(row, col, value):
+        c = ws.cell(row=row, column=col, value=value) #type: ignore
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill(fill_type="solid", fgColor=MID)
+        c.alignment = Alignment(horizontal="center")
+        return c
+
+    r = 1
+
+    # Título
+    ws.merge_cells(f"A{r}:E{r}") #type: ignore
+    c = ws.cell(row=r, column=1, value="REPORTE DE STOCK") #type: ignore
+    c.font = Font(bold=True, size=14, color="FFFFFF")
+    c.fill = PatternFill(fill_type="solid", fgColor=DARK)
+    c.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[r].height = 22 #type: ignore
+    r += 1
+
+    # Metadatos
+    lbl(r, 1, "Fecha de generación:"); ws.cell(row=r, column=2, value=datetime.now().strftime("%d/%m/%Y %H:%M")); r += 1 #type: ignore
+    lbl(r, 1, "Local:");               ws.cell(row=r, column=2, value=local_nombre); r += 1 #type: ignore
+    lbl(r, 1, "Tipo:");                ws.cell(row=r, column=2, value=tipo_nombre or "Todos"); r += 1 #type: ignore
+    if tipo_id is not None:
+        lbl(r, 1, "Subtipo:"); ws.cell(row=r, column=2, value=subtipo_nombre or "Todos"); r += 1 #type: ignore
+
+    r += 1  # fila vacía
+
+    # Resumen
+    if subtipo_totales:
+        summary_hdr(r, 1, "Subtipo"); summary_hdr(r, 2, "Cantidad"); r += 1
+        for sid, data in sorted(subtipo_totales.items(), key=lambda x: (x[0] is None, x[1]["nombre"])):
+            ws.cell(row=r, column=1, value=data["nombre"]); ws.cell(row=r, column=2, value=data["cantidad"]); r += 1 #type: ignore
+        lbl(r, 1, "TOTAL"); c = ws.cell(row=r, column=2, value=total_cantidad); c.font = Font(bold=True); r += 1 #type: ignore
+    else:
+        lbl(r, 1, "Total accesorios:"); ws.cell(row=r, column=2, value=total_cantidad); r += 1 #type: ignore
+
+    # Listado detallado
+    if mostrar_listado:
+        r += 1  # fila vacía
+        for col_idx, titulo in enumerate(["ID", "Accesorio", "Cantidad", "Local"], start=1):
+            hdr(r, col_idx, titulo)
+        r += 1
+        for stock, accesorio, local in resultados:
+            ws.cell(row=r, column=1, value=accesorio.accesorio_id) #type: ignore
+            ws.cell(row=r, column=2, value=accesorio.nombre) #type: ignore
+            ws.cell(row=r, column=3, value=stock.cantidad) #type: ignore
+            ws.cell(row=r, column=4, value=local.nombre) #type: ignore
+            r += 1
+
+    anchos = {"A": 28, "B": 40, "C": 20, "D": 12}
     for col_letra, ancho in anchos.items():
         ws.column_dimensions[col_letra].width = ancho #type: ignore
 
@@ -159,7 +230,7 @@ def exportar_stock_por_exclusion(
     header_fill  = PatternFill(fill_type="solid", fgColor="1A1A2E")
     header_align = Alignment(horizontal="center")
 
-    columnas = ["ID", "Accesorio", "Local", "Cantidad"]
+    columnas = ["ID", "Accesorio", "Cantidad", "Local"]
     for col_idx, titulo in enumerate(columnas, start=1):
         cell = ws.cell(row=1, column=col_idx, value=titulo)  # type: ignore
         cell.font      = header_font
@@ -170,8 +241,8 @@ def exportar_stock_por_exclusion(
         ws.append([  # type: ignore
             accesorio.accesorio_id,
             accesorio.nombre,
-            local.nombre,
             stock.cantidad,
+            local.nombre,
         ])
 
     anchos = {"A": 14, "B": 40, "C": 20, "D": 12}

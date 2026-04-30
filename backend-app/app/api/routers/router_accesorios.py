@@ -431,6 +431,32 @@ def listar_accesorios(
     return session.exec(statement).all()
 
 
+class CambioPrecioMasivoInput(BaseModel):
+    tipo_id: int
+    subtipo_id: Optional[int] = None
+    nuevo_precio: int
+
+
+@router.post("/cambio-precio-masivo")
+def cambio_precio_masivo(
+    data: CambioPrecioMasivoInput,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin),
+):
+    if data.nuevo_precio < 0:
+        raise HTTPException(status_code=400, detail="El precio no puede ser negativo")
+
+    statement = select(Accesorio).where(Accesorio.tipo_id == data.tipo_id)
+    if data.subtipo_id is not None:
+        statement = statement.where(Accesorio.subtipo_id == data.subtipo_id)
+
+    accesorios = session.exec(statement).all()
+    for acc in accesorios:
+        acc.precio = data.nuevo_precio
+    session.commit()
+    return {"mensaje": f"Precio actualizado a ${data.nuevo_precio:,}", "accesorios_modificados": len(accesorios)}
+
+
 @router.delete("/{accesorio_id}")
 def eliminar_accesorio(
     accesorio_id: int,

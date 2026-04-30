@@ -113,6 +113,7 @@ class ReparacionUpdate(SQLModel):
     descripcion: Optional[str] = None
     pago_parcial: Optional[int] = None
     pago_reparador: Optional[int] = None
+    pagado: Optional[bool] = None
     telefono_cliente: Optional[str] = None
     dni_cliente: Optional[str] = None
     mail_cliente: Optional[str] = None
