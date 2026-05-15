@@ -164,7 +164,7 @@ def crear_reparacion(
         session.flush()  # obtener nueva.reparacion_id sin cerrar la transacción
 
         movimiento = MovimientoReparacion(
-            reparacion_id=nueva.reparacion_id,
+            reparacion_id=nueva.reparacion_id, #type: ignore
             tipo_movimiento="CREACION",
             estado_anterior=None,
             estado_nuevo=data.estado_inicial,

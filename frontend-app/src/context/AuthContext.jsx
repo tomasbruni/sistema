@@ -60,6 +60,10 @@ export function AuthProvider({ children }) {
     // por eso el primer setState no va a afectar al estado que leen los que le siguen,
     // solo afecta al estado que leen los que le siguen a la hora de actualizar (react puede esperar a que terminen todos los eventos y despues aplicar la actualizacion del estado)
     // en cambio useRef se aplica al momento, y si un evento lo cambia los demas que le siguen (son secuenciales) leen el valor cambiado
+    // osea con useState se arma un batch de setAlreadyLoggedOut(true), que en algun momento se aplica,
+    // y se sigue ejecutando el resto de logout. Tampoco salva usar prev, 
+    // prev solo hace que dentro del batch se use el ultimo valor real del estado
+    // osea el estado actualizado segun el setState anterior
     if (alreadyLoggedOut.current) return
     alreadyLoggedOut.current = true
 
@@ -89,7 +93,7 @@ export function AuthProvider({ children }) {
 
     window.addEventListener('auth:logout', handler)
     return () => window.removeEventListener('auth:logout', handler)
-  }, [logout])
+  }, [logout]) // esto es solo para el linter, seria lo mismo poner [] porque logout no cambia
 
   return (
     <AuthContext.Provider value={{ token, nombre, rol, usuarioId, expirada, login, logout }}>

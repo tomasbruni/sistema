@@ -80,23 +80,11 @@ export const api = {
 
 
   // ─── CREAR EGRESO ─────────────────────────────────────────
-  crearEgreso: ({
-    monto,
-    descripcion,
-    local_id,
-    usuario_id = null, // admin opcional
-  }) =>
+  crearEgreso: (body) =>
     authFetch(`${BASE_URL}/egresos/`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        monto,
-        descripcion,
-        local_id,
-        ...(usuario_id && { usuario_id }),
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     }).then(handleResponse),
 
 

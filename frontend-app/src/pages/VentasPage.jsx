@@ -303,6 +303,8 @@ export default function VentasPage() {
     if (!cantidad || cantidad <= 0) { mostrarAlerta('error', 'La cantidad debe ser mayor a cero.'); return }
     const existe = productos.find(p => p.tipo === 'accesorio' && p.id === formAccId)
     if (existe) {
+      // el estado deberia ser inmutable, no puedo mutar un estado que ya existe
+      // debo crear uno nuevo
       setProductos(prev => prev.map(p =>
         p.tipo === 'accesorio' && p.id === formAccId
           ? { ...p, cantidad: p.cantidad + cantidad }
@@ -338,7 +340,7 @@ export default function VentasPage() {
       imei: formCelData.imei,
     }])
     cerrarFormCel()
-  }
+  } 
 
   const handleAgregarChip = () => {
     if (!formChipId || !formChipData) { mostrarAlerta('error', 'Seleccioná un chip.'); return }
@@ -486,7 +488,8 @@ export default function VentasPage() {
         monto: parseInt(montoEgreso),
         descripcion: descripcionEgreso,
         local_id: localId,
-        ...(rol === 'admin' && { usuario_id: usuarioId }),
+        ...(rol === 'admin' && { usuario_id: usuarioId }), // si es admin el usuario es seleccionado
+        ...(rol === 'admin' && { fecha: fechaCaja }),
       });
       mostrarAlerta('success', 'Egreso registrado correctamente')
       setLoadingConfirmar(true)
