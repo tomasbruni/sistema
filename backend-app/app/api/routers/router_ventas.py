@@ -17,11 +17,15 @@ from app.db.models import (
 from app.api.modelscreate import VentaCreate
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.fechas import start_of_day, end_of_day
+from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
+
+import time
 
 router = APIRouter(
     prefix="/ventas",
     tags=["VENTAS"],
 )
+
 
 MEDIOS_DE_PAGO_VALIDOS = {"EFECTIVO", "DEBITO", "CREDITO", "QR", "TRANSFERENCIA", "MERCADOPAGO"}
 TIPOS_DE_VENTAS_VALIDOS = {"VENTA", "DEVOLUCION", "ONLINE"}
@@ -175,21 +179,27 @@ def crear_venta(
                     StockAccesorio.accesorio_id == detalle_acc.accesorio_id,
                     StockAccesorio.local_id == venta_data.local_id,
                 )
-                .with_for_update() # bloquea hasta el commit
-            ).first()
+                .with_for_update() # bloquea la fila de stock seleccionada hasta el commit
+            ).first() 
+
+            if (venta_data.usuario_id == 1):
+                time.sleep(20) #para testing, afecta a admin
 
             if not stock:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"No hay stock registrado para '{accesorio.nombre}' en este local.")
 
+            # Devolución: el stock vuelve (movimiento positivo). Venta: el stock sale (negativo).
             if es_devolucion:
-                stock.cantidad += detalle_acc.cantidad
+                tipo_mov = TipoMovimiento.DEVOLUCION
+                cantidad_mov = detalle_acc.cantidad
             else:
                 if stock.cantidad < detalle_acc.cantidad:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Stock insuficiente para '{accesorio.nombre}'. "
                                f"Disponible: {stock.cantidad}, solicitado: {detalle_acc.cantidad}.")
-                stock.cantidad -= detalle_acc.cantidad
+                tipo_mov = TipoMovimiento.VENTA
+                cantidad_mov = -detalle_acc.cantidad
 
             comision    = _calcular_comision(config_acc, detalle_acc.precio_unitario, detalle_acc.cantidad)
             comision    = -comision if es_devolucion else comision
@@ -206,17 +216,15 @@ def crear_venta(
                 comision_importe=comision,
             ))
 
-            # Movimiento negativo en venta, positivo en devolución
-            cantidad_mov = detalle_acc.cantidad if es_devolucion else -detalle_acc.cantidad
-            session.add(MovimientoStock(
-                accesorio_id=detalle_acc.accesorio_id,
-                local_id=venta_data.local_id,
-                tipo_movimiento=TipoMovimiento.VENTA,
+            # Aplica el delta sobre el stock y graba el movimiento con snapshots
+            aplicar_movimiento_stock(
+                session, stock,
+                tipo_movimiento=tipo_mov,
                 cantidad=cantidad_mov,
-                venta_id= venta.venta_id, 
+                venta_id=venta.venta_id,
                 motivo=f"{'Devolución' if es_devolucion else 'Venta'} #{venta.venta_id} - {accesorio.nombre}",
                 usuario_id=usuarioAsignado,
-            )) # type: ignore
+            )
             movimientos_stock.append(detalle_acc.accesorio_id)
 
             detalles_creados["accesorios"].append({

@@ -38,10 +38,7 @@ class Accesorio(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint(
             "nombre",
-            "tipo_id",
-            "marca_celular_id",
-            "modelo_celular_id",
-            name="uq_accesorio_nombre_tipo_marca_celular"
+            name="uq_accesorio_nombre"
         ),
     )
 
@@ -143,6 +140,7 @@ class TipoMovimiento(str, Enum):
     SALIDA = "SALIDA"
     AJUSTE = "AJUSTE"
     VENTA = "VENTA"
+    DEVOLUCION = "DEVOLUCION"
     RESERVA = "RESERVA"
 
 
@@ -171,6 +169,10 @@ class MovimientoStock(SQLModel, table=True):
     ingreso_lote_id: Optional[int] = Field(foreign_key="ingresos_lote.ingreso_lote_id")
     transferencia_id: Optional[int] = Field(foreign_key="transferencias.transferencia_id")
     cantidad: int  # Puede ser negativo para salidas
+    # Snapshots para auditoría: stock_anterior + cantidad == stock_nuevo
+    # NULL en movimientos históricos previos a la migración
+    stock_anterior: Optional[int] = Field(default=None)
+    stock_nuevo: Optional[int] = Field(default=None)
     fecha: Optional[datetime] = Field(default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
     )

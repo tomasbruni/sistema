@@ -6,7 +6,18 @@ export const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 export const handleResponse = async (res) => {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || err.message || `Error ${res.status}`)
+    const detail = err.detail
+    let message
+    if (typeof detail === 'string') {
+      message = detail
+    } else if (Array.isArray(detail)) {
+      message = detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+    } else if (detail) {
+      message = JSON.stringify(detail)
+    } else {
+      message = err.message || `Error ${res.status}`
+    }
+    throw new Error(message)
   }
   return res.json()
 }

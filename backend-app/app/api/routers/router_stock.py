@@ -19,6 +19,9 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from datetime import date, datetime
 
 from app.api.deps import get_current_user, require_admin, UsuarioActual
+from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
+import time
+
 
 router = APIRouter(
     prefix="/stock",
@@ -358,8 +361,10 @@ def ajustar_stock(
             StockAccesorio.accesorio_id == ajuste.accesorio_id,
             StockAccesorio.local_id == ajuste.local_id
         ).with_for_update()
-
+        
         stock = session.exec(stock_query).first()
+
+        # time.sleep(20) # testing
 
         if not stock:
             raise HTTPException(
@@ -370,18 +375,13 @@ def ajustar_stock(
         cantidad_original = stock.cantidad
         diferencia = ajuste.cantidad_nueva - cantidad_original
 
-        stock.cantidad = ajuste.cantidad_nueva
-
-        movimiento = MovimientoStock(
-            accesorio_id=ajuste.accesorio_id,
-            local_id=ajuste.local_id,
+        movimiento = aplicar_movimiento_stock(
+            session, stock,
             tipo_movimiento=TipoMovimiento.AJUSTE,
-            cantidad=diferencia,
+            cantidad=diferencia, #cambio en la logica, bien
             motivo=f"{ajuste.motivo} (Ajuste: {cantidad_original} → {ajuste.cantidad_nueva})",
-            usuario_id=current_user.usuario_id
-        ) # type: ignore
-
-        session.add(movimiento)
+            usuario_id=current_user.usuario_id,
+        )
         session.commit()
         session.refresh(movimiento)
 
@@ -448,21 +448,17 @@ def egreso_stock(
                 detail=f"Stock insuficiente. Disponible: {stock.cantidad}, Solicitado: {movimiento.cantidad}"
             )
 
-        stock.cantidad -= movimiento.cantidad
         motivo = f"Egreso manual en local {movimiento.local_id}"
         if movimiento.motivo:
             motivo += f" - {movimiento.motivo}"
 
-        mov_nuevo = MovimientoStock(
-            accesorio_id=movimiento.accesorio_id,
-            local_id=movimiento.local_id,
+        mov_nuevo = aplicar_movimiento_stock(
+            session, stock,
             tipo_movimiento=TipoMovimiento.SALIDA,
             cantidad=-abs(movimiento.cantidad),
             motivo=motivo,
-            usuario_id=current_user.usuario_id
-        ) #type: ignore
-
-        session.add(mov_nuevo)
+            usuario_id=current_user.usuario_id,
+        )
         session.commit()
         session.refresh(mov_nuevo)
 
@@ -565,6 +561,7 @@ def ingresar_lote(
                 StockAccesorio.local_id == ingreso_lote.local_id
             ).with_for_update()
 
+
             stock = session.exec(stock_query).first()
             #si no existe stock (no deberia pasar igual) se crea
             if not stock:
@@ -576,20 +573,18 @@ def ingresar_lote(
                 session.add(stock)
                 session.flush()
 
-            stock_anterior = stock.cantidad
-            stock.cantidad += item.cantidad_ingreso
+            if (ingreso_lote.receptor_id == 1):
+                time.sleep(20) #para testing
 
             #creo movimientos de entrada asociados al ingreso
-            mov = MovimientoStock(
-                accesorio_id=item.accesorio_id,
-                local_id=ingreso_lote.local_id,
+            mov = aplicar_movimiento_stock(
+                session, stock,
                 tipo_movimiento=TipoMovimiento.ENTRADA,
                 cantidad=item.cantidad_ingreso,
                 motivo=f"Ingreso lote #{lote.ingreso_lote_id} - {local.nombre}",
                 usuario_id=current_user.usuario_id,
                 ingreso_lote_id=lote.ingreso_lote_id,
-            ) # type: ignore
-            session.add(mov)
+            )
 
             # esto despues va al front para generar el remito
             # asi no tengo que hacer un endpoint q haga joins
@@ -599,8 +594,8 @@ def ingresar_lote(
                 "accesorio_id": item.accesorio_id,
                 "accesorio_nombre": accesorio.nombre,
                 "cantidad_ingresada": item.cantidad_ingreso,
-                "stock_anterior": stock_anterior,
-                "stock_nuevo": stock.cantidad,
+                "stock_anterior": mov.stock_anterior,
+                "stock_nuevo": mov.stock_nuevo,
             })
 
         session.commit()
@@ -627,7 +622,7 @@ def ingresar_lote(
         session.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
 
-
+# siempre se usa usuario_id = current_user para crear los movimientos
 # ─── TRANSFERENCIA POR LOTE ───────────────────────────────────────────────────
 @router.post("/transferir-lote", status_code=status.HTTP_200_OK)
 def transferir_lote(
@@ -704,6 +699,9 @@ def transferir_lote(
             ).with_for_update()
             stock_origen = session.exec(stock_origen_query).first()
 
+            # if (transferencia.observaciones is not None):
+            #     time.sleep(20) # origen
+
             if not stock_origen:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -723,6 +721,10 @@ def transferir_lote(
             ).with_for_update()
             stock_destino = session.exec(stock_destino_query).first()
 
+
+            if (transferencia.observaciones is not None):
+                time.sleep(20) # destino
+
             # si no hay stock en el local de destino lo crea (no deberia pasar)
             if not stock_destino:
                 stock_destino = StockAccesorio(
@@ -733,45 +735,36 @@ def transferir_lote(
                 session.add(stock_destino)
                 session.flush()
 
-            stock_anterior_origen = stock_origen.cantidad
-            stock_anterior_destino = stock_destino.cantidad
-            
-            # ya estan en la sesion
-            stock_origen.cantidad -= item.cantidad_a_transferir
-            stock_destino.cantidad += item.cantidad_a_transferir
+            # if (transferencia.local_origen_id == 1):
+            #     time.sleep(20) # rocca 199
 
-            # Movimiento SALIDA en origen
-            mov_salida = MovimientoStock(
-                accesorio_id=item.accesorio_id,
-                local_id=transferencia.local_origen_id,
+            # SALIDA en origen + ENTRADA en destino
+            # (cada helper aplica el delta sobre su fila y graba el movimiento con snapshots)
+            mov_salida = aplicar_movimiento_stock(
+                session, stock_origen,
                 tipo_movimiento=TipoMovimiento.SALIDA,
                 cantidad=-abs(item.cantidad_a_transferir),
                 motivo=f"Transferencia #{registro_transf.transferencia_id} a {local_destino.nombre}",
                 usuario_id=current_user.usuario_id,
                 transferencia_id=registro_transf.transferencia_id,
-            ) # type: ignore
-            # Movimiento ENTRADA en destino
-            mov_entrada = MovimientoStock(
-                accesorio_id=item.accesorio_id,
-                local_id=transferencia.local_destino_id,
+            )
+            mov_entrada = aplicar_movimiento_stock(
+                session, stock_destino,
                 tipo_movimiento=TipoMovimiento.ENTRADA,
                 cantidad=item.cantidad_a_transferir,
                 motivo=f"Transferencia #{registro_transf.transferencia_id} desde {local_origen.nombre}",
                 usuario_id=current_user.usuario_id,
                 transferencia_id=registro_transf.transferencia_id,
-            ) # type: ignore
-
-            session.add(mov_salida)
-            session.add(mov_entrada)
+            )
 
             resultado_items.append({
                 "accesorio_id": item.accesorio_id,
                 "accesorio_nombre": accesorio.nombre,
                 "cantidad_transferida": item.cantidad_a_transferir,
-                "stock_origen_anterior": stock_anterior_origen,
-                "stock_origen_nuevo": stock_origen.cantidad,
-                "stock_destino_anterior": stock_anterior_destino,
-                "stock_destino_nuevo": stock_destino.cantidad,
+                "stock_origen_anterior": mov_salida.stock_anterior,
+                "stock_origen_nuevo": mov_salida.stock_nuevo,
+                "stock_destino_anterior": mov_entrada.stock_anterior,
+                "stock_destino_nuevo": mov_entrada.stock_nuevo,
             })
 
         session.commit()
@@ -1011,18 +1004,17 @@ def seed_stock(
 
     for stock in stocks:
         cantidad_anterior = stock.cantidad
-        stock.cantidad = cantidad_anterior + cantidad if sumar else cantidad
-        diferencia = stock.cantidad - cantidad_anterior
+        cantidad_nueva = cantidad_anterior + cantidad if sumar else cantidad
+        diferencia = cantidad_nueva - cantidad_anterior
 
         if diferencia != 0:
-            session.add(MovimientoStock(
-                accesorio_id=stock.accesorio_id,
-                local_id=stock.local_id,
+            aplicar_movimiento_stock(
+                session, stock,
                 tipo_movimiento=TipoMovimiento.AJUSTE,
                 cantidad=diferencia,
                 motivo=f"Seed stock ({'suma' if sumar else 'seteo'} {cantidad})",
                 usuario_id=current_user.usuario_id,
-            )) #type: ignore
+            )
 
     session.commit()
     return {

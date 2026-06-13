@@ -157,24 +157,6 @@ export default function AccesoriosPage() {
         refetch()
         cancelar()
       } else {
-        const res = await api.verificarDuplicado(body)
-
-        if (res?.tiene_duplicados) {
-          const lineas = res.duplicados.map(d => {
-            const etiqueta = d.es_mismo_precio ? '🔴 Duplicado exacto' : '🟡 Similar'
-            return `  ${etiqueta}: "${d.nombre}" — ID: ${d.accesorio_id} — $${d.precio.toLocaleString()}`
-          }).join('\n')
-
-          const encabezado = res.es_duplicado_exacto
-            ? '🔴 Ya existe un accesorio con el mismo nombre Y precio:'
-            : '🟡 Ya existen accesorios con nombre similar (distinto precio):'
-
-          const confirmar = window.confirm(
-            `${encabezado}\n\n${lineas}\n\n¿Querés crearlo de todas formas?`
-          )
-          if (!confirmar) { setLoading(null); return }
-        }
-
         await api.crearAccesorio(body)
         mostrarAlerta('success', 'Accesorio creado correctamente.')
         refetch()

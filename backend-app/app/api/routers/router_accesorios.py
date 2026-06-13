@@ -12,6 +12,7 @@ from app.db.models import *
 from app.api.modelscreate import *
 from app.api.modelsupdate import *
 from app.api.funciones.accesorios_funciones import generar_nombre_accesorio
+from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 
 from fastapi.responses import StreamingResponse
@@ -198,6 +199,7 @@ def exportar_accesorios(
 #     return {"nombre_sugerido": nombre_base}
 
 
+# NO SIRVE
 @router.post("/verificar-duplicado")
 def verificar_duplicado(
     data: AccesorioCreate,
@@ -749,7 +751,7 @@ def importar_desde_excel(
                     Accesorio.nombre            == nombre_acc,
                     Accesorio.tipo_id           == tipo_id,       # type: ignore
                     Accesorio.subtipo_id        == subtipo_id,    # type: ignore
-                    Accesorio.marca_celular_id  == marca_id,      # type: ignore
+                    Accesorio.marca_celular_id  == marca_id,      # type: ignore ACA SE CLAVO PQ NO DETECTO A13 SIN MARCA Y MODELO
                     Accesorio.modelo_celular_id == modelo_id,     # type: ignore
                     Accesorio.activo            == True,          # type: ignore
                 )
@@ -838,20 +840,15 @@ def importar_desde_excel(
                 errores.append({"fila": f"accesorio_id={item['accesorio_id']}", "motivo": "Stock no encontrado para ingreso"})
                 continue
 
-            stock_anterior  = stock.cantidad
-            stock.cantidad += item["cantidad_ingreso"]
-            session.add(stock)
-
-            # Registrar el movimiento de stock
-            session.add(MovimientoStock(  # type: ignore
-                accesorio_id    = item["accesorio_id"],
-                local_id        = local_id,
+            # Aplica el delta y graba el movimiento ENTRADA con snapshots
+            aplicar_movimiento_stock(
+                session, stock,
                 tipo_movimiento = TipoMovimiento.ENTRADA,
                 cantidad        = item["cantidad_ingreso"],
                 motivo          = f"Importación Excel — {observaciones}" if observaciones else "Importación Excel",
                 usuario_id      = current_user.usuario_id,
                 ingreso_lote_id = lote.ingreso_lote_id,
-            ))
+            )
 
             unidades_totales += item["cantidad_ingreso"]
 

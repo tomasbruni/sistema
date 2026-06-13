@@ -16,6 +16,7 @@ from app.api.modelscreate import PedidoOnlineCreate
 from app.api.modelsupdate import PedidoOnlineAdminNota, PedidoOnlineAprobarBody
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.fechas import start_of_day, end_of_day
+from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
 
 router = APIRouter(
     prefix="/pedidos-online",
@@ -304,16 +305,14 @@ def aprobar_pedido(
                     detail=f"Stock insuficiente para accesorio ID {detalle.accesorio_id}. "
                            f"Disponible: {stock.cantidad}, solicitado: {detalle.cantidad}.")
 
-            stock.cantidad -= detalle.cantidad
-            session.add(MovimientoStock(
-                accesorio_id=detalle.accesorio_id,
-                local_id=body.local_stock_id,
+            aplicar_movimiento_stock(
+                session, stock,
                 tipo_movimiento=TipoMovimiento.RESERVA,
                 cantidad=-detalle.cantidad,
                 pedido_online_id=pedido.pedido_id,
                 motivo=f"Reserva pedido online #{pedido.pedido_id}",
                 usuario_id=current_user.usuario_id,
-            ))  # type: ignore
+            )
 
         # Reservar celulares
         for detalle in celulares:
@@ -584,16 +583,14 @@ def cancelar_pedido(
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"No se encontró stock para revertir accesorio ID {detalle.accesorio_id}.")
 
-            stock.cantidad += detalle.cantidad
-            session.add(MovimientoStock(
-                accesorio_id=detalle.accesorio_id,
-                local_id=local_stock_id,
+            aplicar_movimiento_stock(
+                session, stock,
                 tipo_movimiento=TipoMovimiento.ENTRADA,
                 cantidad=detalle.cantidad,
                 pedido_online_id=pedido.pedido_id,
                 motivo=f"Cancelación pedido online #{pedido.pedido_id}",
                 usuario_id=current_user.usuario_id,
-            ))  # type: ignore
+            )
 
         # Liberar celulares
         for detalle in celulares:
