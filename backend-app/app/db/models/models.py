@@ -148,7 +148,9 @@ class StockAccesorio(SQLModel, table=True):
     __tablename__ = "stock_accesorios" #type: ignore
     __table_args__ = (
         UniqueConstraint("accesorio_id", "local_id"),
-        CheckConstraint("cantidad >= 0", name="ck_stock_accesorios_cantidad_no_negativa"),
+        # Se permite cantidad < 0: las ventas pueden dejar el stock en negativo
+        # cuando hay error de conteo (producto presente físicamente pero no cargado).
+        # El negativo funciona como señal de auditoría para corregir el conteo.
     )
 
     stock_id: Optional[int] = Field(default=None, primary_key=True)

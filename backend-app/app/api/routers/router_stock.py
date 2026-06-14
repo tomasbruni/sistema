@@ -20,7 +20,6 @@ from datetime import date, datetime
 
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
-import time
 
 
 router = APIRouter(
@@ -364,8 +363,6 @@ def ajustar_stock(
         
         stock = session.exec(stock_query).first()
 
-        # time.sleep(20) # testing
-
         if not stock:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -573,10 +570,10 @@ def ingresar_lote(
                 session.add(stock)
                 session.flush()
 
-            if (ingreso_lote.receptor_id == 1):
-                time.sleep(20) #para testing
-
             #creo movimientos de entrada asociados al ingreso
+            # permitir_negativo: un ingreso suma stock; si el actual estaba en
+            # negativo (por ventas sin stock), un ingreso parcial debe poder dejar
+            # un residual negativo sin errorear. Queda como flag para recontar.
             mov = aplicar_movimiento_stock(
                 session, stock,
                 tipo_movimiento=TipoMovimiento.ENTRADA,
@@ -584,6 +581,7 @@ def ingresar_lote(
                 motivo=f"Ingreso lote #{lote.ingreso_lote_id} - {local.nombre}",
                 usuario_id=current_user.usuario_id,
                 ingreso_lote_id=lote.ingreso_lote_id,
+                permitir_negativo=True,
             )
 
             # esto despues va al front para generar el remito
@@ -699,20 +697,20 @@ def transferir_lote(
             ).with_for_update()
             stock_origen = session.exec(stock_origen_query).first()
 
-            # if (transferencia.observaciones is not None):
-            #     time.sleep(20) # origen
-
+            # Si no hay fila de stock en el origen, se crea en 0 y se deja caer a
+            # negativo (mismo criterio que las ventas: producto presente físicamente
+            # pero no cargado). La vendedora no queda bloqueada para transferir.
             if not stock_origen:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No hay stock de '{accesorio.nombre}' en el local de origen"
-                )
+                stock_origen = StockAccesorio(
+                    accesorio_id=item.accesorio_id,
+                    local_id=transferencia.local_origen_id,
+                    cantidad=0,
+                )  # type: ignore
+                session.add(stock_origen)
+                session.flush()
 
-            if stock_origen.cantidad < item.cantidad_a_transferir:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Stock insuficiente de '{accesorio.nombre}'. Disponible: {stock_origen.cantidad}, solicitado: {item.cantidad_a_transferir}"
-                )
+            # Se permite que el origen quede en negativo (señal de auditoría).
+            # No se bloquea por stock insuficiente.
 
             # Stock destino con lock
             stock_destino_query = select(StockAccesorio).where(
@@ -720,10 +718,6 @@ def transferir_lote(
                 StockAccesorio.local_id == transferencia.local_destino_id
             ).with_for_update()
             stock_destino = session.exec(stock_destino_query).first()
-
-
-            if (transferencia.observaciones is not None):
-                time.sleep(20) # destino
 
             # si no hay stock en el local de destino lo crea (no deberia pasar)
             if not stock_destino:
@@ -735,9 +729,6 @@ def transferir_lote(
                 session.add(stock_destino)
                 session.flush()
 
-            # if (transferencia.local_origen_id == 1):
-            #     time.sleep(20) # rocca 199
-
             # SALIDA en origen + ENTRADA en destino
             # (cada helper aplica el delta sobre su fila y graba el movimiento con snapshots)
             mov_salida = aplicar_movimiento_stock(
@@ -747,7 +738,11 @@ def transferir_lote(
                 motivo=f"Transferencia #{registro_transf.transferencia_id} a {local_destino.nombre}",
                 usuario_id=current_user.usuario_id,
                 transferencia_id=registro_transf.transferencia_id,
+                permitir_negativo=True,
             )
+            # permitir_negativo: si el destino ya estaba en negativo (venta sin
+            # stock previa allí), una entrada parcial deja un residual negativo sin
+            # errorear, igual que en los ingresos.
             mov_entrada = aplicar_movimiento_stock(
                 session, stock_destino,
                 tipo_movimiento=TipoMovimiento.ENTRADA,
@@ -755,6 +750,7 @@ def transferir_lote(
                 motivo=f"Transferencia #{registro_transf.transferencia_id} desde {local_origen.nombre}",
                 usuario_id=current_user.usuario_id,
                 transferencia_id=registro_transf.transferencia_id,
+                permitir_negativo=True,
             )
 
             resultado_items.append({

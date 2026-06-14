@@ -841,6 +841,9 @@ def importar_desde_excel(
                 continue
 
             # Aplica el delta y graba el movimiento ENTRADA con snapshots
+            # permitir_negativo: el ingreso suma stock; si el actual estaba negativo
+            # (ventas sin stock), un ingreso parcial deja un residual negativo sin
+            # errorear, como flag para recontar.
             aplicar_movimiento_stock(
                 session, stock,
                 tipo_movimiento = TipoMovimiento.ENTRADA,
@@ -848,6 +851,7 @@ def importar_desde_excel(
                 motivo          = f"Importación Excel — {observaciones}" if observaciones else "Importación Excel",
                 usuario_id      = current_user.usuario_id,
                 ingreso_lote_id = lote.ingreso_lote_id,
+                permitir_negativo = True,
             )
 
             unidades_totales += item["cantidad_ingreso"]

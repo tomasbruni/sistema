@@ -19,8 +19,6 @@ from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.fechas import start_of_day, end_of_day
 from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
 
-import time
-
 router = APIRouter(
     prefix="/ventas",
     tags=["VENTAS"],
@@ -180,24 +178,26 @@ def crear_venta(
                     StockAccesorio.local_id == venta_data.local_id,
                 )
                 .with_for_update() # bloquea la fila de stock seleccionada hasta el commit
-            ).first() 
-
-            if (venta_data.usuario_id == 1):
-                time.sleep(20) #para testing, afecta a admin
+            ).first()
 
             if not stock:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No hay stock registrado para '{accesorio.nombre}' en este local.")
+                # No hay fila de stock para este accesorio en el local. En vez de
+                # bloquear la venta, se crea en 0 y se deja caer a negativo (señal
+                # de auditoría por error de conteo). Fila nueva: no requiere lock.
+                stock = StockAccesorio(
+                    accesorio_id=detalle_acc.accesorio_id,
+                    local_id=venta_data.local_id,
+                    cantidad=0,
+                )  # type: ignore
+                session.add(stock)
+                session.flush()
 
             # Devolución: el stock vuelve (movimiento positivo). Venta: el stock sale (negativo).
+            # Se permite que la venta deje el stock en negativo (error de conteo).
             if es_devolucion:
                 tipo_mov = TipoMovimiento.DEVOLUCION
                 cantidad_mov = detalle_acc.cantidad
             else:
-                if stock.cantidad < detalle_acc.cantidad:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Stock insuficiente para '{accesorio.nombre}'. "
-                               f"Disponible: {stock.cantidad}, solicitado: {detalle_acc.cantidad}.")
                 tipo_mov = TipoMovimiento.VENTA
                 cantidad_mov = -detalle_acc.cantidad
 
@@ -224,6 +224,7 @@ def crear_venta(
                 venta_id=venta.venta_id,
                 motivo=f"{'Devolución' if es_devolucion else 'Venta'} #{venta.venta_id} - {accesorio.nombre}",
                 usuario_id=usuarioAsignado,
+                permitir_negativo=not es_devolucion,
             )
             movimientos_stock.append(detalle_acc.accesorio_id)
 
