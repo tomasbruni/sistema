@@ -11,7 +11,7 @@ from app.db.models import *
 
 from app.api.modelscreate import *
 from app.api.modelsupdate import *
-from app.api.funciones.accesorios_funciones import generar_nombre_accesorio
+from app.api.funciones.accesorios_funciones import generar_nombre_accesorio, normalizar_nombre_accesorio
 from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 
@@ -280,6 +280,7 @@ def crear_accesorio(
             raise HTTPException(status_code=400, detail="No hay locales")
 
         accesorio = Accesorio(**accesorio_data.model_dump())
+        accesorio.nombre = normalizar_nombre_accesorio(accesorio.nombre)
         session.add(accesorio)
         session.flush()
 
@@ -368,6 +369,9 @@ def actualizar_accesorio(
 
     try:
         update_data = accesorio_data.model_dump(exclude_unset=True)
+
+        if "nombre" in update_data and update_data["nombre"] is not None:
+            update_data["nombre"] = normalizar_nombre_accesorio(update_data["nombre"])
 
         # Validar consistencia marca/modelo si alguno de los dos viene en el update
         marca_celular_id = update_data.get("marca_celular_id", accesorio.marca_celular_id)
@@ -743,7 +747,7 @@ def importar_desde_excel(
             cantidad = 0 if (raw_cantidad is None or pd.isna(raw_cantidad)) else int(raw_cantidad)
 
             # Nombre descriptivo del accesorio
-            nombre_acc = f"{subtipo_nombre} {marca_nombre} {modelo_nombre}"
+            nombre_acc = normalizar_nombre_accesorio(f"{subtipo_nombre} {marca_nombre} {modelo_nombre}")
 
             # Verificar si ya existe un accesorio con esa combinación exacta
             existente = session.exec(

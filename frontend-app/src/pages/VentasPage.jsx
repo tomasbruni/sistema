@@ -658,12 +658,6 @@ export default function VentasPage() {
                     placeholder="Buscar por nombre..."
                   />
                 </div>
-                {formAccData && (
-                  <div className="form-group" style={{ maxWidth: 110 }}>
-                    <label>Stock disponible</label>
-                    <input type="text" readOnly value={formAccData.stock ?? 0} />
-                  </div>
-                )}
                 <div className="form-group">
                   <label>Precio unitario *</label>
                   <input
@@ -839,9 +833,8 @@ export default function VentasPage() {
                       <label>Forma de pago</label>
                       <select value={medioPagoElectronico ?? ''} onChange={e => setMedioPagoElectronico(e.target.value)}>
                         <option value="" disabled>Seleccionar...</option>
-                        <option value="QR">QR</option>
-                        <option value="DEBITO">Débito</option>
                         <option value="TRANSFERENCIA">Transferencia</option>
+                        <option value="DEBITO">Débito</option>
                         <option value="CREDITO">Crédito</option>
                       </select>
                     </div>
