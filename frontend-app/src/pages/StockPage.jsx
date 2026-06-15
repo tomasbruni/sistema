@@ -473,13 +473,12 @@ export default function StockPage() {
                       />
                     </div>
                     <div className="form-group">
-                      <label>Motivo *</label>
+                      <label>Motivo</label>
                       <input
                         type="text"
                         placeholder="Ej: Inventario físico del 10/03"
                         value={formAjuste.motivo}
                         onChange={e => setFormAjuste(p => ({ ...p, motivo: e.target.value }))}
-                        required
                       />
                     </div>
                   </div>
