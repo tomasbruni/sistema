@@ -72,7 +72,7 @@ export default function VentasPage() {
   const {modalItem, modalAbierto, loadingModal, abrirModal, cerrarModal} = useModalDetalle(api.getDetallesVenta)
 
   const [cuotas, setCuotas] = useState(1);
-  const [medioPagoElectronico, setMedioPagoElectronico] = useState("QR");
+  const [medioPagoElectronico, setMedioPagoElectronico] = useState(null);
 
   // ── Fecha de venta (solo admin puede modificar) ───────────────────────────
   const hoyArgentina = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
@@ -215,7 +215,7 @@ export default function VentasPage() {
     setMedioPago('efectivo')
     setMontoEfectivo('')
     setMontoElectronico('')
-    setMedioPagoElectronico('QR')
+    setMedioPagoElectronico(null)
     setCuotas(1)
     setFechaVenta(hoyArgentina())
     cerrarFormEgresos()
@@ -879,7 +879,6 @@ export default function VentasPage() {
                       <label>Forma de pago</label>
                       <select value={medioPagoElectronico ?? ''} onChange={e => setMedioPagoElectronico(e.target.value)}>
                         <option value="" disabled>Seleccionar...</option>
-                        <option value="QR">QR</option>
                         <option value="DEBITO">Débito</option>
                         <option value="TRANSFERENCIA">Transferencia</option>
                         <option value="CREDITO">Crédito</option>
