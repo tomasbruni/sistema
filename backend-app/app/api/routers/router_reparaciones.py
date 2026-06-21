@@ -251,6 +251,9 @@ def cambio_de_precio(
     if reparacion.estado == "CANCELADO":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="No se puede cambiar el precio de una reparación cancelada")
+    if reparacion.estado == "EN_REVISION":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="En revisión todavía no hay precio final; se establece al aceptar la reparación")
     try:
         monto_anterior = reparacion.total
         monto_nuevo = data.precio_final
@@ -293,9 +296,11 @@ def cambio_de_pago_parcial(
     # SI LA VENDEDORA SE EQUIVOCA, PUEDE MODIFICAR EL PAGO PARCIAL RECIBIDO,
     # PERO GENERA UN MOVIMIENTO DE CAMBIO PARA REPORTE
     reparacion = _get_or_404(reparacion_id, session)
-    if reparacion.estado == "CANCELADO":
+    # Solo mientras la plata sigue "abierta" (revisión o reparación). Una vez entregada
+    # o cancelada, el saldo ya se cerró: corregir el adelanto descuadraría la caja.
+    if reparacion.estado not in ESTADOS_VALIDOS_CREACION:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="No se puede corregir el adelanto de una reparación cancelada")
+                            detail=f"Solo se puede corregir el adelanto en estado EN_REVISION o EN_REPARACION (actual: {reparacion.estado})")
     if data.nuevo_monto < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
                             detail=f"El monto es menor a 0")

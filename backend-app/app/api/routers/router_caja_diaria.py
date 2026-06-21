@@ -383,12 +383,19 @@ def _build_pdf(
     rep_ef = sum(
         mov.pago_parcial_agregado
         for mov, _ in movimientos_rep
-        if mov.tipo_movimiento == "CREACION" and mov.pago_parcial_agregado
+        if (mov.tipo_movimiento == "CREACION" or mov.tipo_movimiento == "CAMBIO_ESTADO") and mov.pago_parcial_agregado
     )
     rep_ef += sum(
         mov.monto_entrega_recibido
         for mov, _ in movimientos_rep
         if mov.estado_nuevo == "ENTREGADO" and mov.monto_entrega_recibido
+    )
+    # Las correcciones de adelanto suman/restan la diferencia de efectivo del día
+    rep_ef += sum(
+        mov.monto_nuevo - mov.monto_anterior
+        for mov, _ in movimientos_rep
+        if mov.tipo_movimiento == "CAMBIO_ADELANTO"
+        and mov.monto_nuevo is not None and mov.monto_anterior is not None
     )
 
     if not movimientos_rep:
@@ -414,7 +421,7 @@ def _build_pdf(
                 tipo_label = "ACEPTADA"
                 mov_label = "Cliente acepta" # total final y restan pagar estan en la reparacion, no son relevantes en este movimiento
                 monto_str = _fmt_pesos(mov.pago_parcial_agregado)
-                monto_style = cell
+                monto_style = cell_bold
             elif mov.tipo_movimiento == "CAMBIO_ESTADO": # PARA DEVOLUCIONES Y GARANTIA
                 tipo_label = "CAMBIO ESTADO"
                 mov_label = f"{mov.estado_anterior} → {mov.estado_nuevo}"
@@ -424,7 +431,7 @@ def _build_pdf(
                 tipo_label = "MOD. ADELANTO"
                 mov_label = f"{_fmt_pesos(mov.monto_anterior)} → {_fmt_pesos(mov.monto_nuevo)}" if mov.monto_anterior is not None else "-"
                 monto_str = _fmt_pesos(mov.monto_nuevo - mov.monto_anterior)
-                monto_style = cell
+                monto_style = cell_bold
             elif mov.tipo_movimiento == "CAMBIO_PRECIO":  # CAMBIO_PRECIO
                 tipo_label = "CAMBIO TOTAL REP"
                 mov_label = f"{_fmt_pesos(mov.monto_anterior)} → {_fmt_pesos(mov.monto_nuevo)}" if mov.monto_anterior is not None else "-"

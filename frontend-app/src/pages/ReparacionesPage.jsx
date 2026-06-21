@@ -1047,17 +1047,21 @@ export default function ReparacionesPage() {
                         </button>
                       )}
 
-                      {/* ── Cambio de precio / adelanto (todos los estados menos cancelado) ── */}
-                      {rep.estado !== 'CANCELADO' && (<>
+                      {/* ── Cambiar precio final (no en revisión: el total se fija al aceptar, ni cancelado) ── */}
+                      {rep.estado !== 'CANCELADO' && rep.estado !== 'EN_REVISION' && (
                         <button className="btn btn-sm btn-secondary"
                           onClick={() => { cerrarTodo(); setMontoRepId(rep.reparacion_id) }}>
                           Cambiar precio final
                         </button>
+                      )}
+
+                      {/* ── Corregir adelanto (solo mientras la plata sigue abierta) ── */}
+                      {(rep.estado === 'EN_REVISION' || rep.estado === 'EN_REPARACION') && (
                         <button className="btn btn-sm btn-secondary"
                           onClick={() => abrirCambioPago(rep)}>
                           Corregir adelanto
                         </button>
-                      </>)}
+                      )}
 
                       {/* ── Siempre visibles ── */}
                       <button className="btn btn-sm btn-secondary"

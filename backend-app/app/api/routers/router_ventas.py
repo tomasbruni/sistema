@@ -587,8 +587,8 @@ def listar_ventas(
         )
     # 🔹 Orden + paginación
     statement = statement.order_by(
-        Venta.fecha_ingreso.desc(),
-        Venta.venta_id.desc(),  # desempate estable para que las páginas no se solapen
+        Venta.fecha_ingreso.desc(),# type: ignore
+        Venta.venta_id.desc(),  # type: ignore desempate estable para que las páginas no se solapen
     ).offset(skip).limit(limit)  # type: ignore
 
     ventas = session.exec(statement).all()
