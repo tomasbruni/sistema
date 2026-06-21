@@ -97,8 +97,11 @@ def listar_reparaciones(
     if estado is not None:
         statement = statement.where(Reparacion.estado == estado)
     else:
-        # Las canceladas no se muestran en la lista principal (se ven filtrando por estado CANCELADO)
-        statement = statement.where(Reparacion.estado != "CANCELADO")
+        # Las terminales (canceladas/entregadas) no se muestran en la lista principal;
+        # se ven filtrando explícitamente por su estado.
+        statement = statement.where(
+            Reparacion.estado.not_in(["CANCELADO", "ENTREGADO", "ENTREGADO_GARANTIA"])  # type: ignore
+        )
     if local_id is not None:
         statement = statement.where(Reparacion.local_id == local_id)
     if dni_cliente is not None:
@@ -111,11 +114,11 @@ def listar_reparaciones(
     if current_user.rol == "admin" and pagado is not None:
         statement = statement.where(Reparacion.pagado == pagado)
 
-    # Orden determinístico: para admin sin filtro, las pagadas primero.
+    # Orden determinístico: para admin sin filtro, primero las NO pagadas al reparador.
     # Siempre con desempate por PK para que la paginación sea estable.
     if current_user.rol == "admin" and pagado is None:
         statement = statement.order_by(
-            Reparacion.pagado.desc(),  # type: ignore  (pagados primero)
+            Reparacion.pagado.asc(),  # type: ignore  (no pagadas primero: False antes que True)
             Reparacion.reparacion_id.desc(),  # type: ignore
         )
     else:

@@ -209,7 +209,7 @@ export default function ReparacionesPage() {
     setLoadingCrear(true)
     const esRevision = formCrear.estado_inicial === 'EN_REVISION'
     try {
-      await api.crearReparacion({
+      const res = await api.crearReparacion({
         estado_inicial:   formCrear.estado_inicial,
         celular:          formCrear.celular.trim(),
         nombre_cliente:   formCrear.nombre_cliente.trim(),
@@ -224,6 +224,11 @@ export default function ReparacionesPage() {
         ...(esAdmin && formCrear.usuario_id    ? { usuario_id: Number(formCrear.usuario_id) } : {}),
       })
       mostrarAlerta('success', 'Reparación creada correctamente.')
+      const nuevoId = res?.reparacion?.reparacion_id
+      if (nuevoId) await descargarPdf(
+        () => api.descargarCertificadoRecepcion(nuevoId),
+        `recepcion_${String(nuevoId).padStart(4, '0')}.pdf`
+      )
       setMostrarCrear(false)
       setFormCrear(formCrearVacio)
       fetchReparaciones()
@@ -338,8 +343,9 @@ export default function ReparacionesPage() {
   const handleSubmitAceptar = async (e) => {
     e.preventDefault()
     setLoadingAceptar(true)
+    const repId = aceptarRepId
     try {
-      await api.aceptarReparacion(aceptarRepId, {
+      await api.aceptarReparacion(repId, {
         total_final:           Number(aceptarTotal),
         pago_parcial_agregado: Number(aceptarPagoParcial),
         observaciones:         aceptarObs.trim() || null,
@@ -347,6 +353,10 @@ export default function ReparacionesPage() {
         ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Reparación aceptada correctamente.')
+      await descargarPdf(
+        () => api.descargarCertificadoRecepcion(repId),
+        `recepcion_${String(repId).padStart(4, '0')}.pdf`
+      )
       setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
@@ -366,14 +376,19 @@ export default function ReparacionesPage() {
   const handleSubmitCancelar = async (e) => {
     e.preventDefault()
     setLoadingCancelar(true)
+    const repId = cancelarRepId
     try {
-      await api.cancelarReparacion(cancelarRepId, {
+      await api.cancelarReparacion(repId, {
         monto_a_devolver: cancelarMonto !== '' ? Number(cancelarMonto) : null,
         observaciones:    cancelarObs.trim() || null,
         ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
         ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Reparación cancelada.')
+      await descargarPdf(
+        () => api.descargarCertificadoCancelacion(repId),
+        `cancelacion_${String(repId).padStart(4, '0')}.pdf`
+      )
       setCancelarRepId(null); setCancelarMonto(''); setCancelarObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
@@ -399,11 +414,18 @@ export default function ReparacionesPage() {
       ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
       ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
     }
+    const repId = transRepId
+    const accion = transAccion
     try {
-      if (transAccion === 'entregar')               await api.entregarReparacion(transRepId, body)
-      else if (transAccion === 'garantia')          await api.garantiaReparacion(transRepId, body)
-      else if (transAccion === 'entregar-garantia') await api.entregarGarantiaReparacion(transRepId, body)
+      if (accion === 'entregar')               await api.entregarReparacion(repId, body)
+      else if (accion === 'garantia')          await api.garantiaReparacion(repId, body)
+      else if (accion === 'entregar-garantia') await api.entregarGarantiaReparacion(repId, body)
       mostrarAlerta('success', 'Reparación actualizada correctamente.')
+      // Al entregar (normal o por garantía) se genera el certificado de garantía
+      if (accion === 'entregar' || accion === 'entregar-garantia') await descargarPdf(
+        () => api.descargarCertificadoGarantia(repId),
+        `garantia_${String(repId).padStart(4, '0')}.pdf`
+      )
       setTransRepId(null); setTransAccion(null); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
