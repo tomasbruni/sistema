@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import './AccesoriosPage.css'
-import { api } from '../api/api'
+import { api, LIMIT } from '../api/api'
 import { useAlerta } from '../hooks/useAlerta'
 import { useAuth } from '../hooks/useAuth'
 import { useModalDetalle } from '../hooks/ventas/useModalDetalles'
@@ -53,6 +53,10 @@ export default function ReparacionesPage() {
   const [fechaHasta, setFechaHasta]           = useState('')
   const [busqueda, setBusqueda]               = useState('')
   const debounceRef                           = useRef(null)
+
+  // Paginación
+  const [pagina, setPagina] = useState(0)
+  const [hayMas, setHayMas] = useState(false)
 
   // Formulario crear
   const [mostrarCrear, setMostrarCrear] = useState(false)
@@ -112,26 +116,24 @@ export default function ReparacionesPage() {
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
-  const fetchReparaciones = async (
-    localId   = filtroLocalId,
-    estado    = filtroEstado,
-    usuarioId = filtroUsuarioId,
-    dni       = busqueda,
-    desde     = fechaDesde,
-    hasta     = fechaHasta,
-    pagado    = filtroPagado,
-  ) => {
+  const fetchReparaciones = async (pag = pagina, overrides = {}) => {
     setLoadingLista(true)
+    const params = {
+      skip:        pag * LIMIT,
+      limit:       LIMIT + 1,  // +1 para detectar si hay página siguiente
+      local_id:    filtroLocalId,
+      estado:      filtroEstado,
+      usuario_id:  filtroUsuarioId,
+      dni_cliente: busqueda || null,
+      fecha_desde: fechaDesde || null,
+      fecha_hasta: fechaHasta || null,
+      pagado:      filtroPagado,
+      ...overrides,
+    }
     try {
-      const data = await api.listarReparaciones({
-        local_id: localId, estado,
-        usuario_id: usuarioId,
-        dni_cliente: dni || null,
-        fecha_desde: desde || null,
-        fecha_hasta: hasta || null,
-        pagado,
-      })
-      setReparaciones(data)
+      const data = await api.listarReparaciones(params)
+      setHayMas(data.length > LIMIT)
+      setReparaciones(data.slice(0, LIMIT))
     } catch (err) {
       mostrarAlerta('error', `Error al cargar reparaciones: ${err.message}`)
     } finally {
@@ -141,55 +143,63 @@ export default function ReparacionesPage() {
 
   // ── Filtros ───────────────────────────────────────────────────────────────
 
+  const irAPagina = (nueva) => { setPagina(nueva); fetchReparaciones(nueva) }
+
+  // Al cambiar un filtro siempre se vuelve a la primera página
+  const aplicarFiltros = (overrides = {}) => { setPagina(0); fetchReparaciones(0, overrides) }
+
   const handleBusqueda = (e) => {
     const val = e.target.value
     setBusqueda(val)
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() =>
-      fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, val, fechaDesde, fechaHasta), 400)
+    debounceRef.current = setTimeout(() => aplicarFiltros({ dni_cliente: val || null }), 400)
   }
 
   const handleFiltroLocal = (localId) => {
     const nuevo = filtroLocalId === localId ? null : localId
     setFiltroLocalId(nuevo)
-    fetchReparaciones(nuevo, filtroEstado, filtroUsuarioId, busqueda, fechaDesde, fechaHasta)
+    aplicarFiltros({ local_id: nuevo })
   }
 
   const handleFiltroEstado = (estado) => {
     const nuevo = filtroEstado === estado ? null : estado
     setFiltroEstado(nuevo)
-    fetchReparaciones(filtroLocalId, nuevo, filtroUsuarioId, busqueda, fechaDesde, fechaHasta)
+    aplicarFiltros({ estado: nuevo })
   }
 
   const handleFiltroUsuario = (usuarioId) => {
     const nuevo = filtroUsuarioId === usuarioId ? null : usuarioId
     setFiltroUsuarioId(nuevo)
-    fetchReparaciones(filtroLocalId, filtroEstado, nuevo, busqueda, fechaDesde, fechaHasta)
+    aplicarFiltros({ usuario_id: nuevo })
   }
 
   const handleFiltroPagado = (valor) => {
     const nuevo = filtroPagado === valor ? null : valor
     setFiltroPagado(nuevo)
-    fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, busqueda, fechaDesde, fechaHasta, nuevo)
+    aplicarFiltros({ pagado: nuevo })
   }
 
   const handleFechaDesde = (e) => {
     const val = e.target.value
     setFechaDesde(val)
-    fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, busqueda, val, fechaHasta)
+    aplicarFiltros({ fecha_desde: val || null })
   }
 
   const handleFechaHasta = (e) => {
     const val = e.target.value
     setFechaHasta(val)
-    fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, busqueda, fechaDesde, val)
+    aplicarFiltros({ fecha_hasta: val || null })
   }
 
   const limpiarFiltros = () => {
     setFiltroLocalId(null); setFiltroEstado(null); setFiltroUsuarioId(null)
     setFiltroPagado(null)
     setFechaDesde(''); setFechaHasta(''); setBusqueda('')
-    fetchReparaciones(null, null, null, '', '', '', null)
+    setPagina(0)
+    fetchReparaciones(0, {
+      local_id: null, estado: null, usuario_id: null,
+      dni_cliente: null, fecha_desde: null, fecha_hasta: null, pagado: null,
+    })
   }
 
   // ── Crear ─────────────────────────────────────────────────────────────────
@@ -1039,6 +1049,11 @@ export default function ReparacionesPage() {
               ))}
             </tbody>
           </table>
+          <div className="paginacion">
+            <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina - 1)} disabled={pagina === 0}>← Anterior</button>
+            <span className="pagina-info">Página {pagina + 1}</span>
+            <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina + 1)} disabled={!hayMas}>Siguiente →</button>
+          </div>
         </div>
       )}
 

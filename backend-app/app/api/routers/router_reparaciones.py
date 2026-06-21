@@ -77,6 +77,8 @@ ESTADOS_VALIDOS_CREACION = ["EN_REVISION", "EN_REPARACION"]
 
 @router.get("/", response_model=list[Reparacion])
 def listar_reparaciones(
+    skip: int = 0,
+    limit: int = 20,
     estado: Optional[str] = None,
     local_id: Optional[int] = None,
     usuario_id: Optional[int] = None,
@@ -119,6 +121,7 @@ def listar_reparaciones(
     else:
         statement = statement.order_by(Reparacion.reparacion_id.desc())  # type: ignore
 
+    statement = statement.offset(skip).limit(limit)
     return session.exec(statement).all()
 
 
