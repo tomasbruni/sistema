@@ -29,7 +29,7 @@ router = APIRouter(
 # ── Inputs para transiciones ──────────────────────────────────────────────────
 
 class CambioPrecioInput(SQLModel):
-    monto_agregado: int
+    precio_final: int
     observaciones: Optional[str] = None
     fecha: Optional[date] = None
     usuario_id: Optional[int] = None
@@ -83,6 +83,7 @@ def listar_reparaciones(
     dni_cliente: Optional[str] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    pagado: Optional[bool] = None,
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(get_current_user),
 ):
@@ -93,6 +94,9 @@ def listar_reparaciones(
         statement = statement.where(Reparacion.usuario_id == usuario_id)
     if estado is not None:
         statement = statement.where(Reparacion.estado == estado)
+    else:
+        # Las canceladas no se muestran en la lista principal (se ven filtrando por estado CANCELADO)
+        statement = statement.where(Reparacion.estado != "CANCELADO")
     if local_id is not None:
         statement = statement.where(Reparacion.local_id == local_id)
     if dni_cliente is not None:
@@ -101,6 +105,20 @@ def listar_reparaciones(
         statement = statement.where(Reparacion.fecha_ingreso >= start_of_day(fecha_desde))  # type: ignore
     if fecha_hasta is not None:
         statement = statement.where(Reparacion.fecha_ingreso <= end_of_day(fecha_hasta))  # type: ignore
+    # Solo el admin puede filtrar por reparaciones ya pagadas al reparador.
+    if current_user.rol == "admin" and pagado is not None:
+        statement = statement.where(Reparacion.pagado == pagado)
+
+    # Orden determinístico: para admin sin filtro, las pagadas primero.
+    # Siempre con desempate por PK para que la paginación sea estable.
+    if current_user.rol == "admin" and pagado is None:
+        statement = statement.order_by(
+            Reparacion.pagado.desc(),  # type: ignore  (pagados primero)
+            Reparacion.reparacion_id.desc(),  # type: ignore
+        )
+    else:
+        statement = statement.order_by(Reparacion.reparacion_id.desc())  # type: ignore
+
     return session.exec(statement).all()
 
 
@@ -224,9 +242,12 @@ def cambio_de_precio(
     current_user: UsuarioActual = Depends(get_current_user),
 ):
     reparacion = _get_or_404(reparacion_id, session)
+    if reparacion.estado == "CANCELADO":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No se puede cambiar el precio de una reparación cancelada")
     try:
         monto_anterior = reparacion.total
-        monto_nuevo = monto_anterior + data.monto_agregado #type: ignore
+        monto_nuevo = data.precio_final
         reparacion.total = monto_nuevo
 
         usuario_id = (
@@ -266,6 +287,9 @@ def cambio_de_pago_parcial(
     # SI LA VENDEDORA SE EQUIVOCA, PUEDE MODIFICAR EL PAGO PARCIAL RECIBIDO,
     # PERO GENERA UN MOVIMIENTO DE CAMBIO PARA REPORTE
     reparacion = _get_or_404(reparacion_id, session)
+    if reparacion.estado == "CANCELADO":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No se puede corregir el adelanto de una reparación cancelada")
     if data.nuevo_monto < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
                             detail=f"El monto es menor a 0")
@@ -453,7 +477,7 @@ def garantia(
     current_user: UsuarioActual = Depends(get_current_user),
 ):
     reparacion = _get_or_404(reparacion_id, session)
-    if reparacion.estado != "ENTREGADO":
+    if reparacion.estado not in ["ENTREGADO", "ENTREGADO_GARANTIA"] :
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Solo se puede enviar a garantía una reparación en estado ENTREGADO (actual: {reparacion.estado})")
     try:
         estado_anterior = reparacion.estado
@@ -784,10 +808,8 @@ def certificado_garantia(
     story.append(Spacer(1, 4*mm))
 
     tbl_equipo = Table([
-        fila("Equipo:",   rep.celular),
-        fila("Total:",    f"${rep.total:,}"),
-        fila("Adelanto:", f"${rep.pago_parcial:,}"),
-        fila("Restan pagar:",    f"${(rep.total or 0) - rep.pago_parcial:,}"),
+        fila("Equipo:", rep.celular),
+        fila("Total:",  f"${rep.total:,}"),
     ], colWidths=[W * 0.22, W * 0.78])
     tbl_equipo.setStyle(tabla_style)
     story.append(tbl_equipo)

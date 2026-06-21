@@ -647,8 +647,8 @@ export const api = {
       .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
 
   // REPARACIONES
-  listarReparaciones: ({ estado = null, local_id = null, usuario_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/reparaciones/?${buildParams({ estado, local_id, usuario_id, dni_cliente, fecha_desde, fecha_hasta })}`).then(handleResponse),
+  listarReparaciones: ({ estado = null, local_id = null, usuario_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null, pagado = null } = {}) =>
+    authFetch(`${BASE_URL}/reparaciones/?${buildParams({ estado, local_id, usuario_id, dni_cliente, fecha_desde, fecha_hasta, pagado })}`).then(handleResponse),
 
   crearReparacion: (body) =>
     authFetch(`${BASE_URL}/reparaciones/`, {

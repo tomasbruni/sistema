@@ -48,6 +48,7 @@ export default function ReparacionesPage() {
   const [filtroLocalId, setFiltroLocalId]     = useState(null)
   const [filtroEstado, setFiltroEstado]       = useState(null)
   const [filtroUsuarioId, setFiltroUsuarioId] = useState(null)
+  const [filtroPagado, setFiltroPagado]       = useState(null)
   const [fechaDesde, setFechaDesde]           = useState('')
   const [fechaHasta, setFechaHasta]           = useState('')
   const [busqueda, setBusqueda]               = useState('')
@@ -118,6 +119,7 @@ export default function ReparacionesPage() {
     dni       = busqueda,
     desde     = fechaDesde,
     hasta     = fechaHasta,
+    pagado    = filtroPagado,
   ) => {
     setLoadingLista(true)
     try {
@@ -127,6 +129,7 @@ export default function ReparacionesPage() {
         dni_cliente: dni || null,
         fecha_desde: desde || null,
         fecha_hasta: hasta || null,
+        pagado,
       })
       setReparaciones(data)
     } catch (err) {
@@ -164,6 +167,12 @@ export default function ReparacionesPage() {
     fetchReparaciones(filtroLocalId, filtroEstado, nuevo, busqueda, fechaDesde, fechaHasta)
   }
 
+  const handleFiltroPagado = (valor) => {
+    const nuevo = filtroPagado === valor ? null : valor
+    setFiltroPagado(nuevo)
+    fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, busqueda, fechaDesde, fechaHasta, nuevo)
+  }
+
   const handleFechaDesde = (e) => {
     const val = e.target.value
     setFechaDesde(val)
@@ -178,8 +187,9 @@ export default function ReparacionesPage() {
 
   const limpiarFiltros = () => {
     setFiltroLocalId(null); setFiltroEstado(null); setFiltroUsuarioId(null)
+    setFiltroPagado(null)
     setFechaDesde(''); setFechaHasta(''); setBusqueda('')
-    fetchReparaciones(null, null, null, '', '', '')
+    fetchReparaciones(null, null, null, '', '', '', null)
   }
 
   // ── Crear ─────────────────────────────────────────────────────────────────
@@ -265,7 +275,7 @@ export default function ReparacionesPage() {
     setLoadingMonto(true)
     try {
       await api.cambiarPrecioReparacion(montoRepId, {
-        monto_agregado: Number(montoAgregar),
+        precio_final: Number(montoAgregar),
         observaciones:  montoObs.trim() || null,
         ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
         ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
@@ -667,11 +677,11 @@ export default function ReparacionesPage() {
       {/* ── Modal agregar monto ── */}
       {montoRepId && (
         <div className="form-card">
-          <h3>Agregar monto — reparacion #{montoRepId}</h3>
+          <h3>Cambiar precio final — reparacion #{montoRepId}</h3>
           <form onSubmit={handleSubmitMonto} className="acc-form">
             <div className="form-row">
               <div className="form-group">
-                <label>Monto a agregar *</label>
+                <label>Nuevo precio final *</label>
                 <input type="number" value={montoAgregar} min={1} required
                   onChange={e => setMontoAgregar(e.target.value)} placeholder="Ej: 5000" />
               </div>
@@ -863,6 +873,19 @@ export default function ReparacionesPage() {
                 ))}
               </div>
             </div>
+            {esAdmin && (
+              <div className="filtros-row">
+                <span className="filtros-sublabel">Pago al reparador:</span>
+                <div className="filtros-chips">
+                  <button
+                    className={`filtro-chip ${filtroPagado === true ? 'filtro-chip-activo' : ''}`}
+                    onClick={() => handleFiltroPagado(true)}>Pagados</button>
+                  <button
+                    className={`filtro-chip ${filtroPagado === false ? 'filtro-chip-activo' : ''}`}
+                    onClick={() => handleFiltroPagado(false)}>No pagados</button>
+                </div>
+              </div>
+            )}
             <div className="filtros-row">
               <span className="filtros-sublabel">Fecha:</span>
               <div className="filtros-chips">
@@ -870,7 +893,7 @@ export default function ReparacionesPage() {
                 <input type="date" value={fechaHasta} onChange={handleFechaHasta} />
               </div>
             </div>
-            {(filtroLocalId || filtroEstado || filtroUsuarioId || fechaDesde || fechaHasta || busqueda) && (
+            {(filtroLocalId || filtroEstado || filtroUsuarioId || filtroPagado !== null || fechaDesde || fechaHasta || busqueda) && (
               <button className="btn-limpiar-filtros" onClick={limpiarFiltros}>Limpiar filtros</button>
             )}
           </div>
@@ -950,14 +973,6 @@ export default function ReparacionesPage() {
                           Cancelar
                         </button>
                         <button className="btn btn-sm btn-secondary"
-                          onClick={() => { cerrarTodo(); setMontoRepId(rep.reparacion_id) }}>
-                          Agregar monto total
-                        </button>
-                        <button className="btn btn-sm btn-secondary"
-                          onClick={() => abrirCambioPago(rep)}>
-                          Corregir adelanto
-                        </button>
-                        <button className="btn btn-sm btn-secondary"
                           onClick={() => descargarPdf(
                             () => api.descargarCertificadoRecepcion(rep.reparacion_id),
                             `recepcion_${String(rep.reparacion_id).padStart(4, '0')}.pdf`
@@ -999,6 +1014,18 @@ export default function ReparacionesPage() {
                           Cert. Cancelación
                         </button>
                       )}
+
+                      {/* ── Cambio de precio / adelanto (todos los estados menos cancelado) ── */}
+                      {rep.estado !== 'CANCELADO' && (<>
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => { cerrarTodo(); setMontoRepId(rep.reparacion_id) }}>
+                          Cambiar precio final
+                        </button>
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => abrirCambioPago(rep)}>
+                          Corregir adelanto
+                        </button>
+                      </>)}
 
                       {/* ── Siempre visibles ── */}
                       <button className="btn btn-sm btn-secondary"

@@ -586,7 +586,10 @@ def listar_ventas(
             Venta.fecha_ingreso <= end_of_day(fecha), #type: ignore
         )
     # 🔹 Orden + paginación
-    statement = statement.order_by(Venta.fecha_ingreso.desc()).offset(skip).limit(limit)  # type: ignore
+    statement = statement.order_by(
+        Venta.fecha_ingreso.desc(),
+        Venta.venta_id.desc(),  # desempate estable para que las páginas no se solapen
+    ).offset(skip).limit(limit)  # type: ignore
 
     ventas = session.exec(statement).all()
 
