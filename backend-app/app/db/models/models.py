@@ -225,6 +225,7 @@ class Venta(SQLModel, table=True):
     monto_total: int  # validado por el backend: sum(precio_unitario * cantidad) de todos los detalles
     tipo: str         # VENTA | DEVOLUCION | ONLINE
     pedido_online_id: Optional[int] = Field(default=None, foreign_key="pedidos_online.pedido_id")
+    observacion: Optional[str] = Field(default=None, max_length=500)  # nota libre de la vendedora (ej: descuentos)
  
  
 class PagoVenta(SQLModel, table=True):

@@ -128,11 +128,16 @@ def crear_venta(
             usuarioAsignado = current_user.usuario_id
             
         # ── 1. Crear la venta principal (monto_total se actualiza al final) ───
+        # Sanitizar la observación: recortar espacios, limitar largo y normalizar
+        # a None cuando queda vacía para no guardar cadenas en blanco.
+        observacion = (venta_data.observacion or "").strip()[:500] or None
+
         venta_kwargs: dict = dict(
             local_id=venta_data.local_id,
             usuario_id=usuarioAsignado,
             monto_total=0,  # se calcula y actualiza antes del commit
             tipo=venta_data.tipo.upper(),
+            observacion=observacion,
         )
         if current_user.rol == 'admin' and venta_data.fecha_ingreso is not None:
             venta_kwargs["fecha_ingreso"] = start_of_day(venta_data.fecha_ingreso)

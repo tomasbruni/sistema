@@ -92,7 +92,8 @@
 }
 
 .form-group input,
-.form-group select {
+.form-group select,
+.form-group textarea {
   padding: 8px 10px;
   border: 1px solid #ccc;
   border-radius: 4px;
@@ -100,8 +101,14 @@
   background: #fff;
 }
 
+.form-group textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+
 .form-group input:focus,
-.form-group select:focus {
+.form-group select:focus,
+.form-group textarea:focus {
   outline: none;
   border-color: #1a1a2e;
 }

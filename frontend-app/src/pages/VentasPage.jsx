@@ -54,6 +54,7 @@ export default function VentasPage() {
   const { options, buscadorSelect } = useSelectOptions(['accesoriosConStock', 'celulares', 'chips'])
 
   // ── Creación: pago ────────────────────────────────────────────────────────
+  const [observacion, setObservacion]       = useState('')
   const [medioPago, setMedioPago]           = useState('efectivo') // 'efectivo' | 'electronico' | 'ambos'
   const [montoEfectivo, setMontoEfectivo]   = useState('')
   const [montoElectronico, setMontoElectronico] = useState('')
@@ -213,6 +214,7 @@ export default function VentasPage() {
     setProductos([])
     setFormAccAbierto(false); setFormCelAbierto(false); setFormChipAbierto(false)
     setMedioPago('efectivo')
+    setObservacion('')
     setMontoEfectivo('')
     setMontoElectronico('')
     setMedioPagoElectronico(null)
@@ -440,6 +442,7 @@ export default function VentasPage() {
     const payload = {
       local_id:   localId,
       tipo:       tipoOperacion,
+      ...(observacion.trim() && { observacion: observacion.trim() }),
       pagos,
       detalles_accesorios: productos
         .filter(p => p.tipo === 'accesorio')
@@ -912,6 +915,17 @@ export default function VentasPage() {
                   )
                 })()
               )}
+
+              <div className="form-group" style={{ marginTop: 12 }}>
+                <label>Observaciones (opcional)</label>
+                <textarea
+                  value={observacion}
+                  onChange={e => setObservacion(e.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  placeholder="Ej: descuento 10% instagram"
+                />
+              </div>
 
               <div className="form-actions" style={{ marginTop: 16 }}>
                 <button

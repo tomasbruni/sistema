@@ -188,8 +188,9 @@ def _build_pdf(
 
     _abrev = {"ACCESORIO": "ACC", "CELULAR": "CEL", "CHIP": "CHIP"}
 
-    celulares_en_ventas = []  # (venta_id, nombre, codigo)
+    celulares_en_ventas = []   # (venta_id, nombre, codigo)
     chips_en_ventas = []       # (venta_id, nombre, codigo)
+    observaciones_en_ventas = []  # (venta_id, observacion)
 
     for v_idx, v in enumerate(sorted(ventas, key=lambda x: x.fecha_ingreso)):
         detalles  = detalles_by_venta.get(v.venta_id, [])
@@ -201,6 +202,9 @@ def _build_pdf(
             f"{f' ({p.cuotas} cuotas)' if p.medio_de_pago == 'CREDITO' else ''}"
             for p in pagos
         ) or "-"
+
+        if v.observacion:
+            observaciones_en_ventas.append((v.venta_id, v.observacion))
 
         for d_idx in range(n):
             det = detalles[d_idx] if d_idx < len(detalles) else None
@@ -287,6 +291,17 @@ def _build_pdf(
         chip_tbl = Table(chip_data, colWidths=[W*0.10, W*0.55, W*0.35], repeatRows=1)
         chip_tbl.setStyle(TableStyle(_subtbl_style))
         story.append(chip_tbl)
+        story.append(Spacer(1, 6))
+
+    if observaciones_en_ventas:
+        story.append(Paragraph("OBSERVACIONES", seccion))
+        obs_data = [[Paragraph(t, header_cel) for t in ["ID Venta", "Observación"]]] + [
+            [Paragraph(str(vid), cell), Paragraph(obs, cell)]
+            for vid, obs in observaciones_en_ventas
+        ]
+        obs_tbl = Table(obs_data, colWidths=[W*0.10, W*0.90], repeatRows=1)
+        obs_tbl.setStyle(TableStyle(_subtbl_style))
+        story.append(obs_tbl)
         story.append(Spacer(1, 6))
 
     # ── Totales ventas ──
