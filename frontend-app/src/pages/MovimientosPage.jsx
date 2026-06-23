@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { api, LIMIT} from '../api/api'
 import { useAlerta } from '../hooks/useAlerta'
+import useSelectOptions from '../hooks/useSelectOptions'
+import SearchableSelect from '../components/SearchableSelect/SearchableSelect'
 import './AccesoriosPage.css'
 import './MovimientosPage.css'
 
@@ -39,17 +41,27 @@ export default function MovimientosPage() {
   const [pagina, setPagina] = useState(0)
   const [hayMas, setHayMas] = useState(false)
 
-  const [filtroTipo, setFiltroTipo]       = useState(null)
-  const [filtroLocalId, setFiltroLocalId] = useState(null)
+  const [filtroTipo, setFiltroTipo]           = useState(null)
+  const [filtroLocalId, setFiltroLocalId]     = useState(null)
+  const [filtroUsuarioId, setFiltroUsuarioId] = useState(null)
+  const [filtroAccesorioId, setFiltroAccesorioId] = useState(null)
   const [fechaDesde, setFechaDesde]       = useState('')
   const [fechaHasta, setFechaHasta]       = useState('')
   const [locales, setLocales]             = useState([])
+  const [usuarios, setUsuarios]           = useState([])
+
+  const { options, buscadorSelect } = useSelectOptions(['accesorios'])
 
   const debounceRef = useRef(null)
+
+  // Mapa usuario_id → nombre para resolver el nombre en la tabla sin tocar el backend
+  const usuariosPorId = Object.fromEntries(usuarios.map(u => [u.usuario_id, u.nombre]))
 
   useEffect(() => {
     fetchMovimientos(0)
     api.listarLocales().then(setLocales).catch(() => {})
+    api.listarUsuarios().then(setUsuarios).catch(() => {})
+    buscadorSelect('accesorios', '')
   }, [])
 
   const fetchMovimientos = async (pag, overrides = {}) => {
@@ -58,6 +70,8 @@ export default function MovimientosPage() {
       skip:            pag * LIMIT,
       limit:           LIMIT + 1,
       local_id:        filtroLocalId,
+      accesorio_id:    filtroAccesorioId,
+      usuario_id:      filtroUsuarioId,
       tipo_movimiento: filtroTipo,
       fecha_desde:     fechaDesde || null,
       fecha_hasta:     fechaHasta || null,
@@ -92,6 +106,17 @@ export default function MovimientosPage() {
     aplicarFiltros({ local_id: nuevo })
   }
 
+  const handleFiltroUsuario = (usuarioId) => {
+    const nuevo = filtroUsuarioId === usuarioId ? null : usuarioId
+    setFiltroUsuarioId(nuevo)
+    aplicarFiltros({ usuario_id: nuevo })
+  }
+
+  const handleFiltroAccesorio = (accesorioId) => {
+    setFiltroAccesorioId(accesorioId)
+    aplicarFiltros({ accesorio_id: accesorioId })
+  }
+
   const handleFechaDesde = (e) => {
     const val = e.target.value
     setFechaDesde(val)
@@ -107,18 +132,20 @@ export default function MovimientosPage() {
   }
 
   const limpiarFiltros = () => {
-    setFiltroTipo(null); setFiltroLocalId(null); setFechaDesde(''); setFechaHasta('')
+    setFiltroTipo(null); setFiltroLocalId(null); setFiltroUsuarioId(null); setFiltroAccesorioId(null)
+    setFechaDesde(''); setFechaHasta('')
     setPagina(0)
-    fetchMovimientos(0, { local_id: null, tipo_movimiento: null, fecha_desde: null, fecha_hasta: null })
+    fetchMovimientos(0, { local_id: null, accesorio_id: null, usuario_id: null, tipo_movimiento: null, fecha_desde: null, fecha_hasta: null })
   }
 
-  const hayFiltrosActivos = filtroTipo || filtroLocalId || fechaDesde || fechaHasta
+  const hayFiltrosActivos = filtroTipo || filtroLocalId || filtroUsuarioId || filtroAccesorioId || fechaDesde || fechaHasta
 
   const handleExportar = async () => {
     setLoadingExport(true)
     try {
       const blob = await api.exportarMovimientos({
-        local_id: filtroLocalId, tipo_movimiento: filtroTipo,
+        local_id: filtroLocalId, accesorio_id: filtroAccesorioId, usuario_id: filtroUsuarioId,
+        tipo_movimiento: filtroTipo,
         fecha_desde: fechaDesde || null, fecha_hasta: fechaHasta || null,
       })
       const url = URL.createObjectURL(blob)
@@ -135,7 +162,7 @@ export default function MovimientosPage() {
   }
 
   return (
-    <div className="page-container">
+    <div className="page-container movimientos-page">
       <div className="page-header">
         <h2>Historial de movimientos</h2>
         {total > 0 && <span className="total-badge">{total.toLocaleString()} registros</span>}
@@ -184,6 +211,35 @@ export default function MovimientosPage() {
           </div>
         )}
 
+        {usuarios.length > 0 && (
+          <div className="filtros-row">
+            <span className="filtros-sublabel">Usuario:</span>
+            <select
+              className="fecha-input"
+              value={filtroUsuarioId ?? ''}
+              onChange={(e) => handleFiltroUsuario(e.target.value ? parseInt(e.target.value) : null)}
+            >
+              <option value="">Todos</option>
+              {usuarios.map(u => (
+                <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="filtros-row">
+          <span className="filtros-sublabel">Accesorio:</span>
+          <div className="ss-filtro-accesorio">
+            <SearchableSelect
+              options={options.accesorios}
+              value={filtroAccesorioId}
+              onChange={handleFiltroAccesorio}
+              onSearch={(t) => buscadorSelect('accesorios', t)}
+              placeholder="Filtrar por accesorio"
+            />
+          </div>
+        </div>
+
         <div className="filtros-row filtros-fechas">
           <span className="filtros-sublabel">Fecha:</span>
           <div className="fecha-inputs">
@@ -215,7 +271,8 @@ export default function MovimientosPage() {
               <thead>
                 <tr>
                   <th>ID</th><th>Fecha</th><th>ID Acc.</th><th>Accesorio</th>
-                  <th>Local</th><th>Tipo</th><th>Cantidad</th><th>Motivo</th>
+                  <th>Local</th><th>Tipo</th><th>Cantidad</th>
+                  <th>Stock ant.</th><th>Stock nuevo</th><th>Usuario</th><th>Motivo</th>
                 </tr>
               </thead>
               <tbody>
@@ -232,6 +289,9 @@ export default function MovimientosPage() {
                         {mov.cantidad > 0 ? `+${mov.cantidad}` : mov.cantidad}
                       </span>
                     </td>
+                    <td className="mov-stock">{mov.stock_anterior ?? '—'}</td>
+                    <td className="mov-stock">{mov.stock_nuevo ?? '—'}</td>
+                    <td>{usuariosPorId[mov.usuario_id] ?? '—'}</td>
                     <td className="mov-motivo" title={mov.motivo ?? ''}>{mov.motivo ?? '—'}</td>
                   </tr>
                 ))}

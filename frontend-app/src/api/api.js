@@ -359,11 +359,11 @@ export const api = {
     authFetch(`${BASE_URL}/locales/${id}`, { method: 'DELETE' }).then(handleResponse),
 
   // MOVIMIENTOS
-  listarMovimientos: ({ skip = 0, limit = LIMIT, local_id = null, tipo_movimiento = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/movimientos/?${buildParams({ skip, limit, local_id, tipo_movimiento, fecha_desde, fecha_hasta })}`).then(handleResponse),
+  listarMovimientos: ({ skip = 0, limit = LIMIT, local_id = null, accesorio_id = null, usuario_id = null, tipo_movimiento = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/movimientos/?${buildParams({ skip, limit, local_id, accesorio_id, usuario_id, tipo_movimiento, fecha_desde, fecha_hasta })}`).then(handleResponse),
 
-  exportarMovimientos: ({ local_id = null, tipo_movimiento = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/movimientos/export?${buildParams({ local_id, tipo_movimiento, fecha_desde, fecha_hasta })}`)
+  exportarMovimientos: ({ local_id = null, accesorio_id = null, usuario_id = null, tipo_movimiento = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/movimientos/export?${buildParams({ local_id, accesorio_id, usuario_id, tipo_movimiento, fecha_desde, fecha_hasta })}`)
       .then(res => {
         if (!res.ok) throw new Error(`Error ${res.status}`)
         return res.blob()
