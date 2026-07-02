@@ -428,6 +428,13 @@ export const api = {
   eliminarChip: (id) =>
     authFetch(`${BASE_URL}/chips/${id}`, { method: 'DELETE' }).then(handleResponse),
 
+  cambioPrecioGlobalChips: (precio) =>
+    authFetch(`${BASE_URL}/chips/cambio-precio-global`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ precio }),
+    }).then(handleResponse),
+
   ingresarLoteChips: (body) =>
     authFetch(`${BASE_URL}/chips/ingresar-lote`, {
       method: 'POST',
