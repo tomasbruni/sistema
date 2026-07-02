@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 from typing import Optional, List
 from sqlmodel import Session, SQLModel, select, col
-from sqlalchemy import exc
+from sqlalchemy import exc, update
 
 from app.db.session import get_session
 from app.db.models import *
@@ -452,15 +452,18 @@ def cambio_precio_masivo(
     if data.nuevo_precio < 0:
         raise HTTPException(status_code=400, detail="El precio no puede ser negativo")
 
-    statement = select(Accesorio).where(Accesorio.tipo_id == data.tipo_id)
+    statement = (
+        update(Accesorio)
+        .where(Accesorio.tipo_id == data.tipo_id)  # type: ignore
+        .where(Accesorio.activo == True)           # type: ignore
+    )
     if data.subtipo_id is not None:
-        statement = statement.where(Accesorio.subtipo_id == data.subtipo_id)
+        statement = statement.where(Accesorio.subtipo_id == data.subtipo_id) #type: ignore
+    statement = statement.values(precio=data.nuevo_precio)
 
-    accesorios = session.exec(statement).all()
-    for acc in accesorios:
-        acc.precio = data.nuevo_precio
+    result = session.exec(statement)
     session.commit()
-    return {"mensaje": f"Precio actualizado a ${data.nuevo_precio:,}", "accesorios_modificados": len(accesorios)}
+    return {"mensaje": f"Precio actualizado a ${data.nuevo_precio:,}", "accesorios_modificados": result.rowcount} #type: ignore
 
 
 @router.delete("/{accesorio_id}")

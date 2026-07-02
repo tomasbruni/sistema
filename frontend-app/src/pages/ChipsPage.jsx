@@ -20,7 +20,7 @@ const formVacio = {
 
 // ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
 export default function ChipsPage() {
-  const { alerta, mostrarAlerta }       = useAlerta()
+  const { alerta, mostrarAlerta, cerrarAlerta } = useAlerta()
 
   const [chips, setChips]               = useState([])
   const [form, setForm]                 = useState(formVacio)
@@ -353,8 +353,12 @@ export default function ChipsPage() {
 
       {/* Alerta */}
       {alerta && (
-        <div className={`alerta alerta-${alerta.tipo}`}>{alerta.msg}</div>
+        <div className={`alerta alerta-${alerta.tipo}`}>
+          <span>{alerta.msg}</span>
+          <button className="alerta-cerrar" onClick={cerrarAlerta}>✕</button>
+        </div>
       )}
+
 
       {/* ── Modo ingreso por lote ── */}
       {modoIngreso && (

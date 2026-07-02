@@ -222,7 +222,7 @@ def cambio_precio_global(
     )
 
     try:
-        result = session.execute(stmt)
+        result = session.exec(stmt)
         session.commit()
     except exc.IntegrityError as e:
         session.rollback()
