@@ -12,7 +12,6 @@ class LocalCreate(SQLModel):
     tipo: str
     
 
-
 # =====================
 # VENDEDORAS
 # =====================

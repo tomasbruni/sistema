@@ -31,7 +31,9 @@ from app.api.routers import (
     router_pedidos_online,
     router_movimientos_financieros,
     router_reparaciones,
-    router_sobrantes_faltantes)
+    router_sobrantes_faltantes,
+    router_ecommerce,
+    router_cloudinary)
 
 from app.db.models import *
 from app.db.session import get_session, SessionDep
@@ -66,6 +68,8 @@ mainapp.include_router(router_transferencias.router)
 mainapp.include_router(router_movimientos_financieros.router)
 mainapp.include_router(router_reparaciones.router)
 mainapp.include_router(router_sobrantes_faltantes.router)
+mainapp.include_router(router_ecommerce.router)
+mainapp.include_router(router_cloudinary.router)
 
 origins = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5500,http://localhost:5500,http://localhost:5173")
 

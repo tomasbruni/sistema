@@ -53,11 +53,35 @@ class Accesorio(SQLModel, table=True):
     activo: bool = Field(default = True)
 
 
+class ImagenAccesorio(SQLModel, table=True):
+    """Imagenes de un accesorio para el ecommerce (1 accesorio -> N imagenes).
+
+    Se guarda solo la URL (la imagen se hostea afuera). `es_principal` marca la
+    portada de la product card; `orden` define el orden de la galeria.
+    """
+    __tablename__ = "imagenes_accesorios" #type: ignore
+    __table_args__ = (
+        UniqueConstraint("accesorio_id", "url", name="uq_imagen_accesorio_url"),
+    )
+
+    imagen_accesorio_id: Optional[int] = Field(default=None, primary_key=True)
+    accesorio_id: int = Field(foreign_key="accesorios.accesorio_id", index=True)
+    url: str
+    # id del asset dentro del proveedor (ej. public_id de Cloudinary); permite
+    # borrar/transformar via su API. Null si la URL se cargo a mano.
+    public_id: Optional[str] = Field(default=None)
+    orden: int = Field(default=0)
+    es_principal: bool = Field(default=False)
+
+
 class TipoAccesorio(SQLModel, table=True):
     __tablename__ = "tipos_accesorios" #type: ignore
 
     tipo_id: Optional[int] = Field(default=None, primary_key=True)
     nombre: str = Field(index = True, sa_column_kwargs={"unique": True})
+    imagen_url: Optional[str] = Field(default=None)
+    # public_id del asset en Cloudinary (para borrar/reemplazar). Null si no tiene imagen.
+    imagen_public_id: Optional[str] = Field(default=None)
     activo: bool = Field(default = True)
 
 
@@ -71,6 +95,9 @@ class SubtipoAccesorio(SQLModel, table=True):
     subtipo_id: Optional[int] = Field(default=None, primary_key=True)
     nombre: str = Field(index=True)
     tipo_id: int = Field(foreign_key="tipos_accesorios.tipo_id")
+    imagen_url: Optional[str] = Field(default=None)
+    # public_id del asset en Cloudinary (para borrar/reemplazar). Null si no tiene imagen.
+    imagen_public_id: Optional[str] = Field(default=None)
     activo: bool = Field(default = True)
 
 

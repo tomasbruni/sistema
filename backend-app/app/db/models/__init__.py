@@ -14,6 +14,7 @@ from .models import (
 
     # Productos
     Accesorio,
+    ImagenAccesorio,
     TipoAccesorio,
     SubtipoAccesorio,
     ModeloCelular,
@@ -56,6 +57,7 @@ __all__ = [
     "Usuario",
     "Venta",
     "Accesorio",
+    "ImagenAccesorio",
     "TipoAccesorio",
     "SubtipoAccesorio",
     "ModeloCelular",
