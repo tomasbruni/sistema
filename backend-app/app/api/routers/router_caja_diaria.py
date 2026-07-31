@@ -702,8 +702,8 @@ def caja_diaria_pdf(
         .where(Venta.fecha_ingreso >= dt_desde)  # type: ignore
         .where(Venta.fecha_ingreso <= dt_hasta)  # type: ignore
         .order_by(
-                Venta.fecha_ingreso.desc(), #type: ignore
-                Venta.venta_id.desc(),  #type: ignore desempate estable para que las páginas no se solapen
+                Venta.fecha_ingreso.asc(), #type: ignore
+                Venta.venta_id.asc(),  #type: ignore desempate estable para que las páginas no se solapen
             )
     ).all()
  
