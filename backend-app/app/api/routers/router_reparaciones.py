@@ -775,7 +775,7 @@ def certificado_garantia(
         topMargin=14*mm, bottomMargin=14*mm,
     )
     W = A4[0] - 36*mm
-
+    s = _pdf_styles()
     styles = getSampleStyleSheet()
     def style(name, **kw):
         return ParagraphStyle(name, parent=styles["Normal"], **kw)
@@ -838,10 +838,9 @@ def certificado_garantia(
     # ── Reparación realizada y observaciones ───────────────────────────────────
     dots = "\u00a0" * 2 + ("." * 110)
     story.append(Paragraph("<b>REPARACIÓN REALIZADA Y OBSERVACIONES:</b>", bold9))
-    story.append(Spacer(1, 2*mm))
-    for _ in range(5):
-        story.append(Paragraph(dots, punteo))
-    story.append(Spacer(1, 8*mm))
+    story.append(Spacer(1, 1*mm))
+    story.append(Paragraph(f"{mov.observaciones}", s["normal9"])) #type: ignore
+    story.append(Spacer(1, 6*mm))
 
     # ── Fecha de retiro ────────────────────────────────────────────────────────
     story.append(Paragraph(
