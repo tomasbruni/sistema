@@ -14,7 +14,6 @@ import IngresosPage from './pages/IngresosPage'
 import IngresosChipsPage from './pages/IngresosChipsPage'
 import TransferenciasPage from './pages/TransferenciasPage'
 import PedidosOnlinePage from './pages/PedidosOnlinePage'
-import MovimientosFinancierosPage from './pages/MovimientosFinancierosPage'
 import ReparacionesPage from './pages/ReparacionesPage'
 import ImportarExcelPage from './pages/ImportarExcelPage'
 
@@ -50,8 +49,7 @@ export default function App() {
           <Route path="celulares"   element={<RutaAdmin><CelularesPage /></RutaAdmin>} />
           <Route path="reportes"    element={<RutaAdmin><ReportesPage /></RutaAdmin>} />
           {/* <Route path="pedidos-online" element={<RutaAdmin><PedidosOnlinePage /></RutaAdmin>} /> */}
-          <Route path="finanzas" element={<RutaAdmin><MovimientosFinancierosPage /></RutaAdmin>} />
-          <Route path="reparaciones" element={<ReparacionesPage />} /> 
+          <Route path="reparaciones" element={<ReparacionesPage />} />
           <Route path="importar-excel" element={<RutaAdmin><ImportarExcelPage /></RutaAdmin>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

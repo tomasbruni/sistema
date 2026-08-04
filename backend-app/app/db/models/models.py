@@ -467,24 +467,3 @@ class DetallePedidoChip(SQLModel, table=True):
     numero_serie: str  # snapshot
     precio_lista: int  # snapshot del precio al momento de crear el pedido
 
-
-# =====================
-# MOVIMIENTOS FINANCIEROS
-# =====================
-class TipoMovimientoFinanciero(str, Enum):
-    INGRESO = "INGRESO"
-    EGRESO = "EGRESO"
-
-
-class MovimientoFinanciero(SQLModel, table=True):
-    __tablename__ = "movimientos_financieros"  # type: ignore
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    tipo: TipoMovimientoFinanciero
-    monto: int
-    descripcion: str
-    fecha: Optional[datetime] = Field(
-        default=None,
-        sa_column=Column(DateTime(timezone=True), server_default=func.now())
-    )
-    usuario_id: int = Field(foreign_key="usuarios.usuario_id")

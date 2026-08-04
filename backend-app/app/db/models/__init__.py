@@ -45,10 +45,6 @@ from .models import (
     DetallePedidoAccesorio,
     DetallePedidoCelular,
     DetallePedidoChip,
-
-    # Movimientos financieros
-    MovimientoFinanciero,
-    TipoMovimientoFinanciero,
 )
 
 __all__ = [
@@ -82,6 +78,4 @@ __all__ = [
     "DetallePedidoAccesorio",
     "DetallePedidoCelular",
     "DetallePedidoChip",
-    "MovimientoFinanciero",
-    "TipoMovimientoFinanciero",
 ]

@@ -631,28 +631,6 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handleResponse),
 
-  // MOVIMIENTOS FINANCIEROS
-  listarMovimientosFinancieros: ({ offset = 0, limit = LIMIT, tipo = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/?${buildParams({ offset, limit, tipo, fecha_desde, fecha_hasta })}`).then(handleResponse),
-
-  crearMovimientoFinanciero: ({ tipo, monto, descripcion }) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo, monto, descripcion }),
-    }).then(handleResponse),
-
-  actualizarMovimientoFinanciero: (id, body) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }).then(handleResponse),
-
-  eliminarMovimientoFinanciero: (id) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/${id}`, { method: 'DELETE' })
-      .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
-
   // REPARACIONES
   listarReparaciones: ({ skip = 0, limit = LIMIT, estado = null, local_id = null, usuario_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null, pagado = null } = {}) =>
     authFetch(`${BASE_URL}/reparaciones/?${buildParams({ skip, limit, estado, local_id, usuario_id, dni_cliente, fecha_desde, fecha_hasta, pagado })}`).then(handleResponse),
