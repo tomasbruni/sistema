@@ -631,6 +631,31 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handleResponse),
 
+  // GASTOS
+  listarGastos: ({ offset = 0, limit = LIMIT, tipo = null, tipo_factura = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/gastos/?${buildParams({ offset, limit, tipo, tipo_factura, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  totalesGastos: ({ tipo = null, tipo_factura = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/gastos/totales?${buildParams({ tipo, tipo_factura, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  crearGasto: (body) =>
+    authFetch(`${BASE_URL}/gastos/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  actualizarGasto: (id, body) =>
+    authFetch(`${BASE_URL}/gastos/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  eliminarGasto: (id) =>
+    authFetch(`${BASE_URL}/gastos/${id}`, { method: 'DELETE' })
+      .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
+
   // REPARACIONES
   listarReparaciones: ({ skip = 0, limit = LIMIT, estado = null, local_id = null, usuario_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null, pagado = null } = {}) =>
     authFetch(`${BASE_URL}/reparaciones/?${buildParams({ skip, limit, estado, local_id, usuario_id, dni_cliente, fecha_desde, fecha_hasta, pagado })}`).then(handleResponse),

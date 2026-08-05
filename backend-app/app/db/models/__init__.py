@@ -45,6 +45,11 @@ from .models import (
     DetallePedidoAccesorio,
     DetallePedidoCelular,
     DetallePedidoChip,
+
+    # Gastos
+    Gasto,
+    TipoGasto,
+    TipoFactura,
 )
 
 __all__ = [
@@ -78,4 +83,7 @@ __all__ = [
     "DetallePedidoAccesorio",
     "DetallePedidoCelular",
     "DetallePedidoChip",
+    "Gasto",
+    "TipoGasto",
+    "TipoFactura",
 ]
