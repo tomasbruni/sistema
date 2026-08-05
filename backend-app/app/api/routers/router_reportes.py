@@ -395,7 +395,6 @@ def _build_comisiones_excel(
     daily_cel_cant: dict[date, int] = defaultdict(int)
     daily_chip:     dict[date, int] = defaultdict(int)
     daily_chip_cant:dict[date, int] = defaultdict(int)
-    daily_rep:      dict[date, int] = defaultdict(int)
 
     #aca agrupa por fecha en un diccionario
     for d in detalles_acc:
@@ -406,12 +405,10 @@ def _build_comisiones_excel(
     for d in detalles_chip:
         daily_chip[_date_of(d["fecha"])]      += d["precio_unitario"]
         daily_chip_cant[_date_of(d["fecha"])] += 1
-    for (mov, rep), _com in zip(entregas_rep, com_rep_por_entrega):
-        daily_rep[_date_of(mov.fecha)] += rep.total
 
+    # Las reparaciones tienen su propia tabla, no entran en la facturación por día
     all_dates = sorted(
-        daily_acc.keys() | daily_cel.keys() | daily_chip.keys()
-        | daily_rep.keys() | sf_por_dia.keys()
+        daily_acc.keys() | daily_cel.keys() | daily_chip.keys() | sf_por_dia.keys()
     ) # en las fechas que no hubo actividad no pone nada
 
     # ══ ENCABEZADO ════════════════════════════════════════════════════════════
@@ -441,7 +438,7 @@ def _build_comisiones_excel(
     FILA_T1_HDR = FILA_T1_LBL + 1
     _hdr_row(FILA_T1_HDR, [
         "Fecha", "Accesorios", "Celulares", "Cant. Cel.",
-        "Chips", "Cant. Chips", "Reparaciones", "Total día", "Sobrante", "Faltante",
+        "Chips", "Cant. Chips", "Total día", "Sobrante", "Faltante",
     ])
 
     fila = FILA_T1_HDR + 1
@@ -451,7 +448,6 @@ def _build_comisiones_excel(
         cel_cant = daily_cel_cant.get(d, 0)
         chip     = daily_chip.get(d, 0)
         chip_cant= daily_chip_cant.get(d, 0)
-        rep      = daily_rep.get(d, 0)
         sob, fal = sf_por_dia.get(d, (0, 0))
         _dat_row(fila, [
             d.strftime("%d/%m/%Y"),
@@ -460,8 +456,7 @@ def _build_comisiones_excel(
             cel_cant  or "",
             chip      or "",
             chip_cant or "",
-            rep       or "",
-            acc + cel + chip + rep or "",
+            acc + cel + chip or "",
             sob or "",
             fal or "",
         ])
@@ -475,22 +470,53 @@ def _build_comisiones_excel(
         len(detalles_cel)  or "",
         total_monto_chip or "",
         len(detalles_chip) or "",
-        total_monto_rep  or "",
-        total_monto_acc + total_monto_cel + total_monto_chip + total_monto_rep,
+        total_monto_acc + total_monto_cel + total_monto_chip,
         total_sob or "",
         total_fal or "",
     ], font=bold_tot)
     ws.cell(row=fila, column=1).alignment = center_al  # type: ignore
     fila += 1
 
-    # ══ TABLA 2: RESUMEN POR CATEGORÍA + COMISIONES ═══════════════════════════
+    # ══ TABLA 2: REPARACIONES ENTREGADAS ══════════════════════════════════════
     FILA_T2_LBL = fila + 2
-    ws.merge_cells(f"A{FILA_T2_LBL}:D{FILA_T2_LBL}")  # type: ignore
-    _cell(FILA_T2_LBL, 1, "Resumen por categoría",
+    ws.merge_cells(f"A{FILA_T2_LBL}:F{FILA_T2_LBL}")  # type: ignore
+    _cell(FILA_T2_LBL, 1, "Reparaciones entregadas",
           font=Font(bold=True, size=11), alignment=left_al)
 
     FILA_T2_HDR = FILA_T2_LBL + 1
-    _hdr_row(FILA_T2_HDR, ["Categoría", "Cant.", "Total facturado", "Comisión", "", "", "", "", "", ""])
+    _hdr_row(FILA_T2_HDR, [
+        "Fecha creación", "Fecha entrega", "Cliente", "Equipo", "Total", "Comisión",
+    ])
+
+    fila = FILA_T2_HDR + 1
+    for (mov, rep), com in zip(entregas_rep, com_rep_por_entrega):
+        _dat_row(fila, [
+            _fmt_fecha_ar(rep.fecha_ingreso),
+            _fmt_fecha_ar(mov.fecha),
+            rep.nombre_cliente,
+            rep.celular,
+            rep.total,
+            com,
+        ])
+        fila += 1
+
+    if not entregas_rep:
+        _dat_row(fila, ["Sin reparaciones entregadas en el período", "", "", "", "", ""])
+        fila += 1
+
+    _dat_row(fila, ["TOTAL REPARACIONES", "", "", "", total_monto_rep, total_com_rep],
+             font=bold_tot)
+    ws.cell(row=fila, column=1).alignment = center_al  # type: ignore
+    fila += 1
+
+    # ══ TABLA 3: RESUMEN POR CATEGORÍA + COMISIONES ═══════════════════════════
+    FILA_T3_LBL = fila + 2
+    ws.merge_cells(f"A{FILA_T3_LBL}:D{FILA_T3_LBL}")  # type: ignore
+    _cell(FILA_T3_LBL, 1, "Resumen por categoría",
+          font=Font(bold=True, size=11), alignment=left_al)
+
+    FILA_T3_HDR = FILA_T3_LBL + 1
+    _hdr_row(FILA_T3_HDR, ["Categoría", "Cant.", "Total facturado", "Comisión"])
 
     resumen = [
         ("Accesorios",              len(detalles_acc),  total_monto_acc,  total_com_acc),
@@ -500,17 +526,17 @@ def _build_comisiones_excel(
         ("Sobrantes",               len([v for v in sf_por_dia.values() if v[0] > 0]), total_sob, total_com_sob),
         ("Faltantes",               len([v for v in sf_por_dia.values() if v[1] > 0]), total_fal, -total_com_fal),
     ]
-    fila = FILA_T2_HDR + 1
+    fila = FILA_T3_HDR + 1
     for tipo, cant, monto, com in resumen:
-        _dat_row(fila, [tipo, cant, monto, com, "", "", "", "", "", ""])
+        _dat_row(fila, [tipo, cant, monto, com])
         fila += 1
 
     grand_total = total_monto_acc + total_monto_cel + total_monto_chip + total_monto_rep
-    _dat_row(fila, ["TOTAL", "", grand_total, total_com, "", "", "", "", "", ""], font=bold_tot)
+    _dat_row(fila, ["TOTAL", "", grand_total, total_com], font=bold_tot)
     ws.cell(row=fila, column=1).alignment = center_al  # type: ignore
 
     # ── Anchos de columna ──────────────────────────────────────────────────────
-    for col, width in enumerate([14, 14, 14, 10, 12, 11, 14, 13, 11, 11], start=1):
+    for col, width in enumerate([23, 18, 22, 20, 14, 13, 13, 12, 12, 10], start=1):
         ws.column_dimensions[get_column_letter(col)].width = width  # type: ignore
 
     buf = BytesIO()
