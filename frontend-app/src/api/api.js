@@ -735,4 +735,8 @@ export const api = {
 
   descargarReporteComisiones: ({ local_id, usuario_id, desde, hasta }) =>
     authFetch(`${BASE_URL}/reportes/comisiones/excel?${buildParams({ local_id, usuario_id, desde, hasta })}`),
+
+  // local_id es opcional: sin él el reporte abarca todos los locales
+  descargarReporteFacturacion: ({ desde, hasta, local_id = null }) =>
+    authFetch(`${BASE_URL}/reportes/facturacion/excel?${buildParams({ desde, hasta, local_id })}`),
 }

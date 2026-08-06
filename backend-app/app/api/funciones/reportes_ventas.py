@@ -43,7 +43,7 @@ def _filtro_periodo_local(stmt, columna_fecha, fecha_desde, fecha_hasta, columna
     return stmt
 
 
-def _iva_incluido(monto: int) -> int:
+def iva_incluido(monto: int) -> int:
     """IVA contenido en un importe con IVA incluido (alícuota 21%): monto * 21 / 121."""
     return round(monto * 21 / 121)
 
@@ -115,7 +115,7 @@ def total_efectivo(session, fecha_desde=None, fecha_hasta=None, local_id=None) -
 
 def iva_en_contra(session, fecha_desde=None, fecha_hasta=None, local_id=None) -> int:
     """IVA débito: el IVA contenido en el neto electrónico (IVA incluido, 21/121)."""
-    return _iva_incluido(neto_electronico(session, fecha_desde, fecha_hasta, local_id))
+    return iva_incluido(neto_electronico(session, fecha_desde, fecha_hasta, local_id))
 
 
 # ── Reporte general (todas juntas) ────────────────────────────────────────────
@@ -129,5 +129,5 @@ def resumen_ventas(session, fecha_desde=None, fecha_hasta=None, local_id=None) -
         "total_egresos": egresos,
         "total_ventas": netos["neto_ventas"] - egresos,
         "total_efectivo": netos["neto_efectivo"] - egresos,
-        "iva_en_contra": _iva_incluido(netos["neto_electronico"]),
+        "iva_en_contra": iva_incluido(netos["neto_electronico"]),
     }

@@ -64,15 +64,13 @@ def _calcular_totales_pagos(ventas: list, pagos_by_venta: dict) -> tuple:
 def _calcular_totales_por_tipo(ventas: list, detalles_by_venta: dict) -> tuple:
     """
     Devuelve (total_accesorios, total_celulares, total_chips).
-    Usa precio_unitario * cantidad de cada detalle; el signo del monto_total
-    de la venta determina si es venta o devolución, pero los detalles
-    ya reflejan el signo correcto en precio_unitario.
+    Usa el `subtotal` de cada detalle, que ya viene firmado desde
+    get_detalles_by_venta: las ventas suman y las devoluciones restan.
     """
     acc = cel = chip = 0
     for v in ventas:
-        signo = -1 if v.tipo == "DEVOLUCION" else 1
         for det in detalles_by_venta.get(v.venta_id, []):
-            monto = det["precio_unitario"] * det["cantidad"] * signo
+            monto = det["subtotal"]
             if det["tipo_producto"] == "ACCESORIO":
                 acc  += monto
             elif det["tipo_producto"] == "CELULAR":
