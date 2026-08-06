@@ -29,7 +29,7 @@ from app.api.routers import (
     router_caja_diaria,
     router_transferencias,
     router_pedidos_online,
-    router_movimientos_financieros,
+    router_gastos,
     router_reparaciones,
     router_sobrantes_faltantes,
     router_ecommerce,
@@ -65,7 +65,7 @@ mainapp.include_router(router_egresos_caja.router)
 mainapp.include_router(router_caja_diaria.router)
 mainapp.include_router(router_transferencias.router)
 #mainapp.include_router(router_pedidos_online.router) por ahora no
-mainapp.include_router(router_movimientos_financieros.router)
+mainapp.include_router(router_gastos.router)
 mainapp.include_router(router_reparaciones.router)
 mainapp.include_router(router_sobrantes_faltantes.router)
 mainapp.include_router(router_ecommerce.router)

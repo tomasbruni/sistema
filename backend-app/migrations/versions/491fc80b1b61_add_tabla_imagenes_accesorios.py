@@ -1,7 +1,7 @@
 """add tabla imagenes_accesorios
 
 Revision ID: 491fc80b1b61
-Revises: f5c6f1b7c577
+Revises: 51ed49e6961f
 Create Date: 2026-07-03 00:03:27.730771
 
 """
@@ -14,7 +14,7 @@ import sqlmodel
 
 # revision identifiers, used by Alembic.
 revision: str = '491fc80b1b61'
-down_revision: Union[str, Sequence[str], None] = 'f5c6f1b7c577'
+down_revision: Union[str, Sequence[str], None] = '51ed49e6961f'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

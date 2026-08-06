@@ -1,5 +1,6 @@
 from typing import Optional
 from datetime import datetime, date
+from decimal import Decimal
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, Date, DateTime, func, UniqueConstraint, CheckConstraint
 from enum import Enum
@@ -496,22 +497,41 @@ class DetallePedidoChip(SQLModel, table=True):
 
 
 # =====================
-# MOVIMIENTOS FINANCIEROS
+# GASTOS
 # =====================
-class TipoMovimientoFinanciero(str, Enum):
-    INGRESO = "INGRESO"
-    EGRESO = "EGRESO"
+class TipoGasto(str, Enum):
+    REAL = "REAL"        # plata que salio de verdad
+    FACTURA = "FACTURA"  # factura en blanco (impositiva)
 
 
-class MovimientoFinanciero(SQLModel, table=True):
-    __tablename__ = "movimientos_financieros"  # type: ignore
+class TipoFactura(str, Enum):
+    A = "A"
+    C = "C"
+
+
+class Gasto(SQLModel, table=True):
+    __tablename__ = "gastos"  # type: ignore
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    tipo: TipoMovimientoFinanciero
-    monto: int
+    tipo: TipoGasto
     descripcion: str
+    # gasto real: plata que salio | factura: total de la factura
+    total: Decimal = Field(max_digits=14, decimal_places=2)
     fecha: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
     )
     usuario_id: int = Field(foreign_key="usuarios.usuario_id")
+
+    # ── Solo para tipo == FACTURA ──
+    tipo_factura: Optional[TipoFactura] = None
+    comprada: bool = Field(default=False)       # aplica solo a factura A
+    porcentaje_real: Optional[int] = None        # n%, solo factura A comprada
+    neto: Optional[Decimal] = Field(default=None, max_digits=14, decimal_places=2)  # total productos (factura A)
+    iva: Optional[Decimal] = Field(default=None, max_digits=14, decimal_places=2)   # total IVA (factura A)
+
+    # ── Aportes calculados (para reportes rapidos) ──
+    aporte_real: Decimal = Field(default=Decimal("0"), max_digits=14, decimal_places=2)
+    aporte_blanco: Decimal = Field(default=Decimal("0"), max_digits=14, decimal_places=2)
+    aporte_iva: Decimal = Field(default=Decimal("0"), max_digits=14, decimal_places=2)
+
