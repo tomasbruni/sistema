@@ -631,26 +631,29 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handleResponse),
 
-  // MOVIMIENTOS FINANCIEROS
-  listarMovimientosFinancieros: ({ offset = 0, limit = LIMIT, tipo = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/?${buildParams({ offset, limit, tipo, fecha_desde, fecha_hasta })}`).then(handleResponse),
+  // GASTOS
+  listarGastos: ({ offset = 0, limit = LIMIT, tipo = null, tipo_factura = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/gastos/?${buildParams({ offset, limit, tipo, tipo_factura, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
 
-  crearMovimientoFinanciero: ({ tipo, monto, descripcion }) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/`, {
+  totalesGastos: ({ tipo = null, tipo_factura = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/gastos/totales?${buildParams({ tipo, tipo_factura, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  crearGasto: (body) =>
+    authFetch(`${BASE_URL}/gastos/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo, monto, descripcion }),
+      body: JSON.stringify(body),
     }).then(handleResponse),
 
-  actualizarMovimientoFinanciero: (id, body) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/${id}`, {
+  actualizarGasto: (id, body) =>
+    authFetch(`${BASE_URL}/gastos/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(handleResponse),
 
-  eliminarMovimientoFinanciero: (id) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/${id}`, { method: 'DELETE' })
+  eliminarGasto: (id) =>
+    authFetch(`${BASE_URL}/gastos/${id}`, { method: 'DELETE' })
       .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
 
   // REPARACIONES
@@ -732,4 +735,8 @@ export const api = {
 
   descargarReporteComisiones: ({ local_id, usuario_id, desde, hasta }) =>
     authFetch(`${BASE_URL}/reportes/comisiones/excel?${buildParams({ local_id, usuario_id, desde, hasta })}`),
+
+  // local_id es opcional: sin él el reporte abarca todos los locales
+  descargarReporteFacturacion: ({ desde, hasta, local_id = null }) =>
+    authFetch(`${BASE_URL}/reportes/facturacion/excel?${buildParams({ desde, hasta, local_id })}`),
 }

@@ -28,7 +28,7 @@ export default function Navbar() {
             ]} />
             <NavDropdown label="Finanzas" items={[
               { to: "/reportes", label: "Reportes" },
-              { to: "/finanzas", label: "Finanzas" },
+              { to: "/gastos", label: "Gastos" },
             ]} />
             <li><NavLink to="/adicionales">Archivos maestros</NavLink></li>
             {/* <li><NavLink to="/pedidos-online">Pedidos Online</NavLink></li> */}

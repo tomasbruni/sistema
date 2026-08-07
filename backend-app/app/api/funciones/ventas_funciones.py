@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 from app.db.models import (
     Accesorio, Celular, Chip, MarcaCelular, ModeloCelular,
     DetalleVentaAccesorio, DetalleVentaCelular, DetalleVentaChip,
-    PagoVenta,
+    PagoVenta, Venta,
 )
 
 
@@ -30,14 +30,37 @@ def get_detalles_by_venta(session: Session, venta_ids: list[int]) -> dict[int, l
         nombre_producto : str
         codigo          : str | None  (SKU / IMEI / número de serie)
         precio_lista    : int
-        precio_unitario : int
-        cantidad        : int
-        comision_importe: int
+        precio_unitario : int   SIEMPRE positivo (es un precio, no un movimiento)
+        cantidad        : int   SIEMPRE positiva
+        comision_importe: int   ya firmado: negativo en devoluciones
+        es_devolucion   : bool
+        subtotal        : int   ya firmado: -(precio_unitario * cantidad) en devoluciones
+
+    Regla para los consumidores: **para agregar/sumar usar `subtotal`; para listar
+    línea por línea usar `precio_unitario` y `cantidad`.** Las devoluciones se
+    guardan con los importes de los detalles en positivo (a diferencia de
+    `PagoVenta.importe`, `Venta.monto_total` y `comision_importe`, que sí van
+    firmados), así que sumar `precio_unitario * cantidad` cuenta una devolución
+    como si fuera una venta. `subtotal` y `es_devolucion` evitan que cada reporte
+    tenga que volver a resolver el signo por su cuenta.
     """
     result: dict[int, list[dict]] = defaultdict(list)
 
     if not venta_ids:
         return result
+
+    # Tipo de cada venta, para firmar los subtotales de las devoluciones
+    es_devolucion_by_venta = {
+        vid: (tipo or "").strip().upper() == "DEVOLUCION"
+        for vid, tipo in session.exec(
+            select(Venta.venta_id, Venta.tipo).where(Venta.venta_id.in_(venta_ids))  # type: ignore
+        ).all()
+    }
+
+    def _firmar(venta_id: int, precio_unitario: int, cantidad: int) -> tuple[bool, int]:
+        es_dev   = es_devolucion_by_venta.get(venta_id, False)
+        subtotal = precio_unitario * cantidad
+        return es_dev, -subtotal if es_dev else subtotal
 
     # Accesorios
     for det, acc in session.exec(
@@ -45,6 +68,7 @@ def get_detalles_by_venta(session: Session, venta_ids: list[int]) -> dict[int, l
         .join(Accesorio, DetalleVentaAccesorio.accesorio_id == Accesorio.accesorio_id)  # type: ignore
         .where(DetalleVentaAccesorio.venta_id.in_(venta_ids))  # type: ignore
     ).all():
+        es_dev, subtotal = _firmar(det.venta_id, det.precio_unitario, det.cantidad)
         result[det.venta_id].append({
             "tipo_producto":    "ACCESORIO",
             "nombre_producto":  acc.nombre,
@@ -53,6 +77,8 @@ def get_detalles_by_venta(session: Session, venta_ids: list[int]) -> dict[int, l
             "precio_unitario":  det.precio_unitario,
             "cantidad":         det.cantidad,
             "comision_importe": det.comision_importe,
+            "es_devolucion":    es_dev,
+            "subtotal":         subtotal,
         })
 
     # Celulares
@@ -63,6 +89,7 @@ def get_detalles_by_venta(session: Session, venta_ids: list[int]) -> dict[int, l
         .join(MarcaCelular,  Celular.marca_celular_id              == MarcaCelular.marca_celular_id)   # type: ignore
         .where(DetalleVentaCelular.venta_id.in_(venta_ids))  # type: ignore
     ).all():
+        es_dev, subtotal = _firmar(det.venta_id, det.precio_unitario, 1)
         result[det.venta_id].append({
             "tipo_producto":    "CELULAR",
             "nombre_producto":  f"{marca.nombre} {modelo.nombre}",
@@ -71,6 +98,8 @@ def get_detalles_by_venta(session: Session, venta_ids: list[int]) -> dict[int, l
             "precio_unitario":  det.precio_unitario,
             "cantidad":         1,
             "comision_importe": det.comision_importe,
+            "es_devolucion":    es_dev,
+            "subtotal":         subtotal,
         })
 
     # Chips
@@ -79,6 +108,7 @@ def get_detalles_by_venta(session: Session, venta_ids: list[int]) -> dict[int, l
         .join(Chip, DetalleVentaChip.chip_id == Chip.chip_id)  # type: ignore
         .where(DetalleVentaChip.venta_id.in_(venta_ids))  # type: ignore
     ).all():
+        es_dev, subtotal = _firmar(det.venta_id, det.precio_unitario, 1)
         result[det.venta_id].append({
             "tipo_producto":    "CHIP",
             "nombre_producto":  f"Chip {chip.compania}",
@@ -87,6 +117,8 @@ def get_detalles_by_venta(session: Session, venta_ids: list[int]) -> dict[int, l
             "precio_unitario":  det.precio_unitario,
             "cantidad":         1,
             "comision_importe": det.comision_importe,
+            "es_devolucion":    es_dev,
+            "subtotal":         subtotal,
         })
 
     return result
