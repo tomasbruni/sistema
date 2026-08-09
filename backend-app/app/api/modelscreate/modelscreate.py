@@ -237,6 +237,7 @@ class VentaCreate(SQLModel):
     usuario_id: Optional[int] = None
     tipo: str  # VENTA | DEVOLUCION
     fecha_ingreso: Optional[date] = None  # solo admin puede sobreescribir
+    observacion: Optional[str] = Field(default=None, max_length=500)  # nota libre (ej: descuentos)
 
     pagos: List[PagoVentaCreate] = Field(..., min_length=1)
  

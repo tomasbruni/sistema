@@ -43,3 +43,7 @@ def generar_nombre_accesorio(
     return " ".join(partes)
 
 
+def normalizar_nombre_accesorio(nombre: str) -> str:
+    """Normaliza el nombre: sin espacios al inicio/fin, un solo espacio
+    entre palabras y todo en mayúscula."""
+    return " ".join(nombre.split()).upper()

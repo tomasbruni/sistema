@@ -63,10 +63,10 @@ def login(
         timedelta(minutes=TOKEN_EXPIRE_MINUTES),
     )
 
-    # devuelvo lo necesario para mostrar nombre y rol en la ui
     return {
       "access_token": token,
       "token_type": "bearer",
       "nombre": usuario.nombre,
       "rol": usuario.rol,
+      "usuario_id": usuario.usuario_id,
     }

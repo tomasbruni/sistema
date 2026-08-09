@@ -23,6 +23,7 @@ class EgresoCajaCreate(SQLModel):
     medio_pago: Optional[str] = "EFECTIVO"
     local_id: int
     usuario_id: Optional[int] = None
+    fecha: Optional[date] = None
  
  
 class EgresoCajaUpdate(SQLModel):
@@ -61,13 +62,16 @@ def crear_egreso(
     else:
         usuarioAsignado = current_user.usuario_id
     
-    egreso = EgresoCaja(
-      monto = payload.monto,
-      descripcion = payload.descripcion,
-      medio_pago  = payload.medio_pago, # type: ignore
-      local_id  = payload.local_id,
-      usuario_id  = usuarioAsignado # type: ignore
+    egreso_kwargs: dict = dict(
+        monto=payload.monto,
+        descripcion=payload.descripcion,
+        medio_pago=payload.medio_pago,
+        local_id=payload.local_id,
+        usuario_id=usuarioAsignado,
     )
+    if current_user.rol == 'admin' and payload.fecha is not None:
+        egreso_kwargs["fecha"] = start_of_day(payload.fecha)
+    egreso = EgresoCaja(**egreso_kwargs)
     
     session.add(egreso)
     session.commit()

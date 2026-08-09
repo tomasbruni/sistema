@@ -1,5 +1,22 @@
 /* ── MovimientosPage ──────────────────────────────────────────────────────── */
 
+/* ── Container más ancho para las columnas extra ── */
+.movimientos-page {
+  max-width: 1300px;
+}
+
+/* ── Celdas de stock anterior / nuevo ── */
+.mov-stock {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+/* ── SearchableSelect de accesorio en el panel de filtros ── */
+.ss-filtro-accesorio {
+  min-width: 280px;
+}
+
 /* ── Badge total de registros ── */
 .total-badge {
   background: #e8e8f0;

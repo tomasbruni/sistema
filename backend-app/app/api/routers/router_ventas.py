@@ -17,11 +17,13 @@ from app.db.models import (
 from app.api.modelscreate import VentaCreate
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.fechas import start_of_day, end_of_day
+from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
 
 router = APIRouter(
     prefix="/ventas",
     tags=["VENTAS"],
 )
+
 
 MEDIOS_DE_PAGO_VALIDOS = {"EFECTIVO", "DEBITO", "CREDITO", "QR", "TRANSFERENCIA", "MERCADOPAGO"}
 TIPOS_DE_VENTAS_VALIDOS = {"VENTA", "DEVOLUCION", "ONLINE"}
@@ -126,11 +128,16 @@ def crear_venta(
             usuarioAsignado = current_user.usuario_id
             
         # ── 1. Crear la venta principal (monto_total se actualiza al final) ───
+        # Sanitizar la observación: recortar espacios, limitar largo y normalizar
+        # a None cuando queda vacía para no guardar cadenas en blanco.
+        observacion = (venta_data.observacion or "").strip()[:500] or None
+
         venta_kwargs: dict = dict(
             local_id=venta_data.local_id,
             usuario_id=usuarioAsignado,
             monto_total=0,  # se calcula y actualiza antes del commit
             tipo=venta_data.tipo.upper(),
+            observacion=observacion,
         )
         if current_user.rol == 'admin' and venta_data.fecha_ingreso is not None:
             venta_kwargs["fecha_ingreso"] = start_of_day(venta_data.fecha_ingreso)
@@ -175,21 +182,29 @@ def crear_venta(
                     StockAccesorio.accesorio_id == detalle_acc.accesorio_id,
                     StockAccesorio.local_id == venta_data.local_id,
                 )
-                .with_for_update() # bloquea hasta el commit
+                .with_for_update() # bloquea la fila de stock seleccionada hasta el commit
             ).first()
 
             if not stock:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No hay stock registrado para '{accesorio.nombre}' en este local.")
+                # No hay fila de stock para este accesorio en el local. En vez de
+                # bloquear la venta, se crea en 0 y se deja caer a negativo (señal
+                # de auditoría por error de conteo). Fila nueva: no requiere lock.
+                stock = StockAccesorio(
+                    accesorio_id=detalle_acc.accesorio_id,
+                    local_id=venta_data.local_id,
+                    cantidad=0,
+                )  # type: ignore
+                session.add(stock)
+                session.flush()
 
+            # Devolución: el stock vuelve (movimiento positivo). Venta: el stock sale (negativo).
+            # Se permite que la venta deje el stock en negativo (error de conteo).
             if es_devolucion:
-                stock.cantidad += detalle_acc.cantidad
+                tipo_mov = TipoMovimiento.DEVOLUCION
+                cantidad_mov = detalle_acc.cantidad
             else:
-                if stock.cantidad < detalle_acc.cantidad:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Stock insuficiente para '{accesorio.nombre}'. "
-                               f"Disponible: {stock.cantidad}, solicitado: {detalle_acc.cantidad}.")
-                stock.cantidad -= detalle_acc.cantidad
+                tipo_mov = TipoMovimiento.VENTA
+                cantidad_mov = -detalle_acc.cantidad
 
             comision    = _calcular_comision(config_acc, detalle_acc.precio_unitario, detalle_acc.cantidad)
             comision    = -comision if es_devolucion else comision
@@ -206,17 +221,16 @@ def crear_venta(
                 comision_importe=comision,
             ))
 
-            # Movimiento negativo en venta, positivo en devolución
-            cantidad_mov = detalle_acc.cantidad if es_devolucion else -detalle_acc.cantidad
-            session.add(MovimientoStock(
-                accesorio_id=detalle_acc.accesorio_id,
-                local_id=venta_data.local_id,
-                tipo_movimiento=TipoMovimiento.VENTA,
+            # Aplica el delta sobre el stock y graba el movimiento con snapshots
+            aplicar_movimiento_stock(
+                session, stock,
+                tipo_movimiento=tipo_mov,
                 cantidad=cantidad_mov,
-                venta_id= venta.venta_id, 
+                venta_id=venta.venta_id,
                 motivo=f"{'Devolución' if es_devolucion else 'Venta'} #{venta.venta_id} - {accesorio.nombre}",
                 usuario_id=usuarioAsignado,
-            )) # type: ignore
+                permitir_negativo=not es_devolucion,
+            )
             movimientos_stock.append(detalle_acc.accesorio_id)
 
             detalles_creados["accesorios"].append({
@@ -577,7 +591,10 @@ def listar_ventas(
             Venta.fecha_ingreso <= end_of_day(fecha), #type: ignore
         )
     # 🔹 Orden + paginación
-    statement = statement.order_by(Venta.fecha_ingreso.desc()).offset(skip).limit(limit)  # type: ignore
+    statement = statement.order_by(
+        Venta.fecha_ingreso.desc(),# type: ignore
+        Venta.venta_id.desc(),  # type: ignore desempate estable para que las páginas no se solapen
+    ).offset(skip).limit(limit)  # type: ignore
 
     ventas = session.exec(statement).all()
 

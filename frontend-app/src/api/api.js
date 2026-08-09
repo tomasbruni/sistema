@@ -6,7 +6,18 @@ export const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 export const handleResponse = async (res) => {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || err.message || `Error ${res.status}`)
+    const detail = err.detail
+    let message
+    if (typeof detail === 'string') {
+      message = detail
+    } else if (Array.isArray(detail)) {
+      message = detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+    } else if (detail) {
+      message = JSON.stringify(detail)
+    } else {
+      message = err.message || `Error ${res.status}`
+    }
+    throw new Error(message)
   }
   return res.json()
 }
@@ -80,23 +91,11 @@ export const api = {
 
 
   // ─── CREAR EGRESO ─────────────────────────────────────────
-  crearEgreso: ({
-    monto,
-    descripcion,
-    local_id,
-    usuario_id = null, // admin opcional
-  }) =>
+  crearEgreso: (body) =>
     authFetch(`${BASE_URL}/egresos/`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        monto,
-        descripcion,
-        local_id,
-        ...(usuario_id && { usuario_id }),
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     }).then(handleResponse),
 
 
@@ -254,6 +253,13 @@ export const api = {
   eliminarAccesorio: (id) =>
     authFetch(`${BASE_URL}/accesorios/${id}`, { method: 'DELETE' }).then(handleResponse),
 
+  cambioPrecioMasivo: (body) =>
+    authFetch(`${BASE_URL}/accesorios/cambio-precio-masivo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
   // FormData — no pasar Content-Type, el browser lo setea con el boundary correcto
   importarExcel: (formData) =>
     authFetch(`${BASE_URL}/accesorios/importar-excel`, {
@@ -290,18 +296,24 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handleResponse),
 
-  exportarStock: ({ buscar = '', tipo_id = null, subtipo_id = null, local_id = null, activo = true } = {}) =>
-    authFetch(`${BASE_URL}/stock/export?${buildParams({ buscar, tipo_id, subtipo_id, local_id, activo })}`)
-      .then(res => {
+  exportarStock: ({ buscar = '', tipo_id = null, subtipo_id = null, local_id = null, activo = true, mostrar_listado = true } = {}) =>
+    authFetch(`${BASE_URL}/stock/export?${buildParams({ buscar, tipo_id, subtipo_id, local_id, activo, mostrar_listado })}`)
+      .then(async res => {
         if (!res.ok) throw new Error(`Error ${res.status}`)
-        return res.blob()
+        const blob = await res.blob()
+        const cd = res.headers.get('Content-Disposition') ?? ''
+        const filename = cd.match(/filename="?([^"]+)"?/)?.[1] ?? 'stock.xlsx'
+        return { blob, filename }
       }),
 
   exportarStockPorExclusion: ({ excluir_tipo_ids = null, local_id = null } = {}) =>
     authFetch(`${BASE_URL}/stock/export-por-exclusion?${buildParams({ excluir_tipo_ids, local_id })}`)
-      .then(res => {
+      .then(async res => {
         if (!res.ok) throw new Error(`Error ${res.status}`)
-        return res.blob()
+        const blob = await res.blob()
+        const cd = res.headers.get('Content-Disposition') ?? ''
+        const filename = cd.match(/filename="?([^"]+)"?/)?.[1] ?? 'stock.xlsx'
+        return { blob, filename }
       }),
 
   // Reemplaza a ingresoEgreso para el flujo de ingreso
@@ -347,11 +359,11 @@ export const api = {
     authFetch(`${BASE_URL}/locales/${id}`, { method: 'DELETE' }).then(handleResponse),
 
   // MOVIMIENTOS
-  listarMovimientos: ({ skip = 0, limit = LIMIT, local_id = null, tipo_movimiento = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/movimientos/?${buildParams({ skip, limit, local_id, tipo_movimiento, fecha_desde, fecha_hasta })}`).then(handleResponse),
+  listarMovimientos: ({ skip = 0, limit = LIMIT, local_id = null, accesorio_id = null, usuario_id = null, tipo_movimiento = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/movimientos/?${buildParams({ skip, limit, local_id, accesorio_id, usuario_id, tipo_movimiento, fecha_desde, fecha_hasta })}`).then(handleResponse),
 
-  exportarMovimientos: ({ local_id = null, tipo_movimiento = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/movimientos/export?${buildParams({ local_id, tipo_movimiento, fecha_desde, fecha_hasta })}`)
+  exportarMovimientos: ({ local_id = null, accesorio_id = null, usuario_id = null, tipo_movimiento = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/movimientos/export?${buildParams({ local_id, accesorio_id, usuario_id, tipo_movimiento, fecha_desde, fecha_hasta })}`)
       .then(res => {
         if (!res.ok) throw new Error(`Error ${res.status}`)
         return res.blob()
@@ -415,6 +427,13 @@ export const api = {
 
   eliminarChip: (id) =>
     authFetch(`${BASE_URL}/chips/${id}`, { method: 'DELETE' }).then(handleResponse),
+
+  cambioPrecioGlobalChips: (precio) =>
+    authFetch(`${BASE_URL}/chips/cambio-precio-global`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ precio }),
+    }).then(handleResponse),
 
   ingresarLoteChips: (body) =>
     authFetch(`${BASE_URL}/chips/ingresar-lote`, {
@@ -612,31 +631,34 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handleResponse),
 
-  // MOVIMIENTOS FINANCIEROS
-  listarMovimientosFinancieros: ({ offset = 0, limit = LIMIT, tipo = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/?${buildParams({ offset, limit, tipo, fecha_desde, fecha_hasta })}`).then(handleResponse),
+  // GASTOS
+  listarGastos: ({ offset = 0, limit = LIMIT, tipo = null, tipo_factura = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/gastos/?${buildParams({ offset, limit, tipo, tipo_factura, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
 
-  crearMovimientoFinanciero: ({ tipo, monto, descripcion }) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/`, {
+  totalesGastos: ({ tipo = null, tipo_factura = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/gastos/totales?${buildParams({ tipo, tipo_factura, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  crearGasto: (body) =>
+    authFetch(`${BASE_URL}/gastos/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo, monto, descripcion }),
+      body: JSON.stringify(body),
     }).then(handleResponse),
 
-  actualizarMovimientoFinanciero: (id, body) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/${id}`, {
+  actualizarGasto: (id, body) =>
+    authFetch(`${BASE_URL}/gastos/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(handleResponse),
 
-  eliminarMovimientoFinanciero: (id) =>
-    authFetch(`${BASE_URL}/movimientos-financieros/${id}`, { method: 'DELETE' })
+  eliminarGasto: (id) =>
+    authFetch(`${BASE_URL}/gastos/${id}`, { method: 'DELETE' })
       .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
 
   // REPARACIONES
-  listarReparaciones: ({ estado = null, local_id = null, usuario_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/reparaciones/?${buildParams({ estado, local_id, usuario_id, dni_cliente, fecha_desde, fecha_hasta })}`).then(handleResponse),
+  listarReparaciones: ({ skip = 0, limit = LIMIT, estado = null, local_id = null, usuario_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null, pagado = null } = {}) =>
+    authFetch(`${BASE_URL}/reparaciones/?${buildParams({ skip, limit, estado, local_id, usuario_id, dni_cliente, fecha_desde, fecha_hasta, pagado })}`).then(handleResponse),
 
   crearReparacion: (body) =>
     authFetch(`${BASE_URL}/reparaciones/`, {
@@ -713,4 +735,8 @@ export const api = {
 
   descargarReporteComisiones: ({ local_id, usuario_id, desde, hasta }) =>
     authFetch(`${BASE_URL}/reportes/comisiones/excel?${buildParams({ local_id, usuario_id, desde, hasta })}`),
+
+  // local_id es opcional: sin él el reporte abarca todos los locales
+  descargarReporteFacturacion: ({ desde, hasta, local_id = null }) =>
+    authFetch(`${BASE_URL}/reportes/facturacion/excel?${buildParams({ desde, hasta, local_id })}`),
 }

@@ -54,6 +54,7 @@ export default function VentasPage() {
   const { options, buscadorSelect } = useSelectOptions(['accesoriosConStock', 'celulares', 'chips'])
 
   // ── Creación: pago ────────────────────────────────────────────────────────
+  const [observacion, setObservacion]       = useState('')
   const [medioPago, setMedioPago]           = useState('efectivo') // 'efectivo' | 'electronico' | 'ambos'
   const [montoEfectivo, setMontoEfectivo]   = useState('')
   const [montoElectronico, setMontoElectronico] = useState('')
@@ -72,7 +73,7 @@ export default function VentasPage() {
   const {modalItem, modalAbierto, loadingModal, abrirModal, cerrarModal} = useModalDetalle(api.getDetallesVenta)
 
   const [cuotas, setCuotas] = useState(1);
-  const [medioPagoElectronico, setMedioPagoElectronico] = useState("QR");
+  const [medioPagoElectronico, setMedioPagoElectronico] = useState(null);
 
   // ── Fecha de venta (solo admin puede modificar) ───────────────────────────
   const hoyArgentina = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
@@ -213,9 +214,10 @@ export default function VentasPage() {
     setProductos([])
     setFormAccAbierto(false); setFormCelAbierto(false); setFormChipAbierto(false)
     setMedioPago('efectivo')
+    setObservacion('')
     setMontoEfectivo('')
     setMontoElectronico('')
-    setMedioPagoElectronico('QR')
+    setMedioPagoElectronico(null)
     setCuotas(1)
     setFechaVenta(hoyArgentina())
     cerrarFormEgresos()
@@ -303,6 +305,8 @@ export default function VentasPage() {
     if (!cantidad || cantidad <= 0) { mostrarAlerta('error', 'La cantidad debe ser mayor a cero.'); return }
     const existe = productos.find(p => p.tipo === 'accesorio' && p.id === formAccId)
     if (existe) {
+      // el estado deberia ser inmutable, no puedo mutar un estado que ya existe
+      // debo crear uno nuevo
       setProductos(prev => prev.map(p =>
         p.tipo === 'accesorio' && p.id === formAccId
           ? { ...p, cantidad: p.cantidad + cantidad }
@@ -338,7 +342,7 @@ export default function VentasPage() {
       imei: formCelData.imei,
     }])
     cerrarFormCel()
-  }
+  } 
 
   const handleAgregarChip = () => {
     if (!formChipId || !formChipData) { mostrarAlerta('error', 'Seleccioná un chip.'); return }
@@ -438,6 +442,7 @@ export default function VentasPage() {
     const payload = {
       local_id:   localId,
       tipo:       tipoOperacion,
+      ...(observacion.trim() && { observacion: observacion.trim() }),
       pagos,
       detalles_accesorios: productos
         .filter(p => p.tipo === 'accesorio')
@@ -486,7 +491,8 @@ export default function VentasPage() {
         monto: parseInt(montoEgreso),
         descripcion: descripcionEgreso,
         local_id: localId,
-        ...(rol === 'admin' && { usuario_id: usuarioId }),
+        ...(rol === 'admin' && { usuario_id: usuarioId }), // si es admin el usuario es seleccionado
+        ...(rol === 'admin' && { fecha: fechaCaja }),
       });
       mostrarAlerta('success', 'Egreso registrado correctamente')
       setLoadingConfirmar(true)
@@ -655,12 +661,6 @@ export default function VentasPage() {
                     placeholder="Buscar por nombre..."
                   />
                 </div>
-                {formAccData && (
-                  <div className="form-group" style={{ maxWidth: 110 }}>
-                    <label>Stock disponible</label>
-                    <input type="text" readOnly value={formAccData.stock ?? 0} />
-                  </div>
-                )}
                 <div className="form-group">
                   <label>Precio unitario *</label>
                   <input
@@ -836,9 +836,8 @@ export default function VentasPage() {
                       <label>Forma de pago</label>
                       <select value={medioPagoElectronico ?? ''} onChange={e => setMedioPagoElectronico(e.target.value)}>
                         <option value="" disabled>Seleccionar...</option>
-                        <option value="QR">QR</option>
-                        <option value="DEBITO">Débito</option>
                         <option value="TRANSFERENCIA">Transferencia</option>
+                        <option value="DEBITO">Débito</option>
                         <option value="CREDITO">Crédito</option>
                       </select>
                     </div>
@@ -883,7 +882,6 @@ export default function VentasPage() {
                       <label>Forma de pago</label>
                       <select value={medioPagoElectronico ?? ''} onChange={e => setMedioPagoElectronico(e.target.value)}>
                         <option value="" disabled>Seleccionar...</option>
-                        <option value="QR">QR</option>
                         <option value="DEBITO">Débito</option>
                         <option value="TRANSFERENCIA">Transferencia</option>
                         <option value="CREDITO">Crédito</option>
@@ -917,6 +915,17 @@ export default function VentasPage() {
                   )
                 })()
               )}
+
+              <div className="form-group" style={{ marginTop: 12 }}>
+                <label>Observaciones (opcional)</label>
+                <textarea
+                  value={observacion}
+                  onChange={e => setObservacion(e.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  placeholder="Ej: descuento 10% instagram"
+                />
+              </div>
 
               <div className="form-actions" style={{ marginTop: 16 }}>
                 <button

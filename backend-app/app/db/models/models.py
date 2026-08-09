@@ -1,5 +1,6 @@
 from typing import Optional
 from datetime import datetime, date
+from decimal import Decimal
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, Date, DateTime, func, UniqueConstraint, CheckConstraint
 from enum import Enum
@@ -38,10 +39,7 @@ class Accesorio(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint(
             "nombre",
-            "tipo_id",
-            "marca_celular_id",
-            "modelo_celular_id",
-            name="uq_accesorio_nombre_tipo_marca_celular"
+            name="uq_accesorio_nombre"
         ),
     )
 
@@ -143,6 +141,7 @@ class TipoMovimiento(str, Enum):
     SALIDA = "SALIDA"
     AJUSTE = "AJUSTE"
     VENTA = "VENTA"
+    DEVOLUCION = "DEVOLUCION"
     RESERVA = "RESERVA"
 
 
@@ -150,7 +149,9 @@ class StockAccesorio(SQLModel, table=True):
     __tablename__ = "stock_accesorios" #type: ignore
     __table_args__ = (
         UniqueConstraint("accesorio_id", "local_id"),
-        CheckConstraint("cantidad >= 0", name="ck_stock_accesorios_cantidad_no_negativa"),
+        # Se permite cantidad < 0: las ventas pueden dejar el stock en negativo
+        # cuando hay error de conteo (producto presente físicamente pero no cargado).
+        # El negativo funciona como señal de auditoría para corregir el conteo.
     )
 
     stock_id: Optional[int] = Field(default=None, primary_key=True)
@@ -171,6 +172,10 @@ class MovimientoStock(SQLModel, table=True):
     ingreso_lote_id: Optional[int] = Field(foreign_key="ingresos_lote.ingreso_lote_id")
     transferencia_id: Optional[int] = Field(foreign_key="transferencias.transferencia_id")
     cantidad: int  # Puede ser negativo para salidas
+    # Snapshots para auditoría: stock_anterior + cantidad == stock_nuevo
+    # NULL en movimientos históricos previos a la migración
+    stock_anterior: Optional[int] = Field(default=None)
+    stock_nuevo: Optional[int] = Field(default=None)
     fecha: Optional[datetime] = Field(default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
     )
@@ -221,6 +226,7 @@ class Venta(SQLModel, table=True):
     monto_total: int  # validado por el backend: sum(precio_unitario * cantidad) de todos los detalles
     tipo: str         # VENTA | DEVOLUCION | ONLINE
     pedido_online_id: Optional[int] = Field(default=None, foreign_key="pedidos_online.pedido_id")
+    observacion: Optional[str] = Field(default=None, max_length=500)  # nota libre de la vendedora (ej: descuentos)
  
  
 class PagoVenta(SQLModel, table=True):
@@ -327,7 +333,8 @@ class Reparacion(SQLModel, table=True):
     descripcion: Optional[str] = None
     total: Optional[int] = None # SI ES REVISION PUEDE NO SABERSE
     pago_parcial: int # MIGRACION MANUAL EN ALEMBIC POR CAMBIO DE NOMBRE
-    pago_reparador: Optional[int] = None  
+    pago_reparador: Optional[int] = None
+    pagado: bool = Field(default=False)
     estado: str # REVISION | CANCELADO | EN_REPARACION | ENTREGADO
     fecha_ingreso: Optional[datetime] = Field(default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
@@ -463,22 +470,41 @@ class DetallePedidoChip(SQLModel, table=True):
 
 
 # =====================
-# MOVIMIENTOS FINANCIEROS
+# GASTOS
 # =====================
-class TipoMovimientoFinanciero(str, Enum):
-    INGRESO = "INGRESO"
-    EGRESO = "EGRESO"
+class TipoGasto(str, Enum):
+    REAL = "REAL"        # plata que salio de verdad
+    FACTURA = "FACTURA"  # factura en blanco (impositiva)
 
 
-class MovimientoFinanciero(SQLModel, table=True):
-    __tablename__ = "movimientos_financieros"  # type: ignore
+class TipoFactura(str, Enum):
+    A = "A"
+    C = "C"
+
+
+class Gasto(SQLModel, table=True):
+    __tablename__ = "gastos"  # type: ignore
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    tipo: TipoMovimientoFinanciero
-    monto: int
+    tipo: TipoGasto
     descripcion: str
+    # gasto real: plata que salio | factura: total de la factura
+    total: Decimal = Field(max_digits=14, decimal_places=2)
     fecha: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
     )
     usuario_id: int = Field(foreign_key="usuarios.usuario_id")
+
+    # ── Solo para tipo == FACTURA ──
+    tipo_factura: Optional[TipoFactura] = None
+    comprada: bool = Field(default=False)       # aplica solo a factura A
+    porcentaje_real: Optional[int] = None        # n%, solo factura A comprada
+    neto: Optional[Decimal] = Field(default=None, max_digits=14, decimal_places=2)  # total productos (factura A)
+    iva: Optional[Decimal] = Field(default=None, max_digits=14, decimal_places=2)   # total IVA (factura A)
+
+    # ── Aportes calculados (para reportes rapidos) ──
+    aporte_real: Decimal = Field(default=Decimal("0"), max_digits=14, decimal_places=2)
+    aporte_blanco: Decimal = Field(default=Decimal("0"), max_digits=14, decimal_places=2)
+    aporte_iva: Decimal = Field(default=Decimal("0"), max_digits=14, decimal_places=2)
+

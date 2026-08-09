@@ -39,8 +39,8 @@ class AccesorioUpdate(SQLModel):
     precio: Optional[int] = None
     tipo_id: Optional[int] = None
     subtipo_id: Optional[int] = None
-    modelo_id: Optional[int] = None
-    marca_id: Optional[int] = None
+    modelo_celular_id: Optional[int] = None
+    marca_celular_id: Optional[int] = None
     activo: Optional[bool] = None
 
 
@@ -113,6 +113,7 @@ class ReparacionUpdate(SQLModel):
     descripcion: Optional[str] = None
     pago_parcial: Optional[int] = None
     pago_reparador: Optional[int] = None
+    pagado: Optional[bool] = None
     telefono_cliente: Optional[str] = None
     dni_cliente: Optional[str] = None
     mail_cliente: Optional[str] = None

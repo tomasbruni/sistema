@@ -4,14 +4,15 @@ from pydantic import BaseModel
 
 from typing import Optional, List
 from sqlmodel import Session, SQLModel, select, col
-from sqlalchemy import exc
+from sqlalchemy import exc, update
 
 from app.db.session import get_session
 from app.db.models import *
 
 from app.api.modelscreate import *
 from app.api.modelsupdate import *
-from app.api.funciones.accesorios_funciones import generar_nombre_accesorio
+from app.api.funciones.accesorios_funciones import generar_nombre_accesorio, normalizar_nombre_accesorio
+from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 
 from fastapi.responses import StreamingResponse
@@ -198,6 +199,7 @@ def exportar_accesorios(
 #     return {"nombre_sugerido": nombre_base}
 
 
+# NO SIRVE
 @router.post("/verificar-duplicado")
 def verificar_duplicado(
     data: AccesorioCreate,
@@ -278,6 +280,7 @@ def crear_accesorio(
             raise HTTPException(status_code=400, detail="No hay locales")
 
         accesorio = Accesorio(**accesorio_data.model_dump())
+        accesorio.nombre = normalizar_nombre_accesorio(accesorio.nombre)
         session.add(accesorio)
         session.flush()
 
@@ -367,6 +370,9 @@ def actualizar_accesorio(
     try:
         update_data = accesorio_data.model_dump(exclude_unset=True)
 
+        if "nombre" in update_data and update_data["nombre"] is not None:
+            update_data["nombre"] = normalizar_nombre_accesorio(update_data["nombre"])
+
         # Validar consistencia marca/modelo si alguno de los dos viene en el update
         marca_celular_id = update_data.get("marca_celular_id", accesorio.marca_celular_id)
         modelo_celular_id = update_data.get("modelo_celular_id", accesorio.modelo_celular_id)
@@ -396,7 +402,7 @@ def actualizar_accesorio(
         session.rollback()
         raise HTTPException(
             status_code=400,
-            detail="No se pudo actualizar el accesorio. Verifique que los campos seleccionados existan."
+            detail="No se pudo actualizar el accesorio. Verifique que no haya duplicados."
         )
 
 
@@ -429,6 +435,35 @@ def listar_accesorios(
         statement = statement.where(Accesorio.modelo_celular_id == modelo_celular_id)
 
     return session.exec(statement).all()
+
+
+class CambioPrecioMasivoInput(BaseModel):
+    tipo_id: int
+    subtipo_id: Optional[int] = None
+    nuevo_precio: int
+
+
+@router.post("/cambio-precio-masivo")
+def cambio_precio_masivo(
+    data: CambioPrecioMasivoInput,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin),
+):
+    if data.nuevo_precio < 0:
+        raise HTTPException(status_code=400, detail="El precio no puede ser negativo")
+
+    statement = (
+        update(Accesorio)
+        .where(Accesorio.tipo_id == data.tipo_id)  # type: ignore
+        .where(Accesorio.activo == True)           # type: ignore
+    )
+    if data.subtipo_id is not None:
+        statement = statement.where(Accesorio.subtipo_id == data.subtipo_id) #type: ignore
+    statement = statement.values(precio=data.nuevo_precio)
+
+    result = session.exec(statement)
+    session.commit()
+    return {"mensaje": f"Precio actualizado a ${data.nuevo_precio:,}", "accesorios_modificados": result.rowcount} #type: ignore
 
 
 @router.delete("/{accesorio_id}")
@@ -715,7 +750,7 @@ def importar_desde_excel(
             cantidad = 0 if (raw_cantidad is None or pd.isna(raw_cantidad)) else int(raw_cantidad)
 
             # Nombre descriptivo del accesorio
-            nombre_acc = f"{subtipo_nombre} {marca_nombre} {modelo_nombre}"
+            nombre_acc = normalizar_nombre_accesorio(f"{subtipo_nombre} {marca_nombre} {modelo_nombre}")
 
             # Verificar si ya existe un accesorio con esa combinación exacta
             existente = session.exec(
@@ -723,7 +758,7 @@ def importar_desde_excel(
                     Accesorio.nombre            == nombre_acc,
                     Accesorio.tipo_id           == tipo_id,       # type: ignore
                     Accesorio.subtipo_id        == subtipo_id,    # type: ignore
-                    Accesorio.marca_celular_id  == marca_id,      # type: ignore
+                    Accesorio.marca_celular_id  == marca_id,      # type: ignore ACA SE CLAVO PQ NO DETECTO A13 SIN MARCA Y MODELO
                     Accesorio.modelo_celular_id == modelo_id,     # type: ignore
                     Accesorio.activo            == True,          # type: ignore
                 )
@@ -812,20 +847,19 @@ def importar_desde_excel(
                 errores.append({"fila": f"accesorio_id={item['accesorio_id']}", "motivo": "Stock no encontrado para ingreso"})
                 continue
 
-            stock_anterior  = stock.cantidad
-            stock.cantidad += item["cantidad_ingreso"]
-            session.add(stock)
-
-            # Registrar el movimiento de stock
-            session.add(MovimientoStock(  # type: ignore
-                accesorio_id    = item["accesorio_id"],
-                local_id        = local_id,
+            # Aplica el delta y graba el movimiento ENTRADA con snapshots
+            # permitir_negativo: el ingreso suma stock; si el actual estaba negativo
+            # (ventas sin stock), un ingreso parcial deja un residual negativo sin
+            # errorear, como flag para recontar.
+            aplicar_movimiento_stock(
+                session, stock,
                 tipo_movimiento = TipoMovimiento.ENTRADA,
                 cantidad        = item["cantidad_ingreso"],
                 motivo          = f"Importación Excel — {observaciones}" if observaciones else "Importación Excel",
                 usuario_id      = current_user.usuario_id,
                 ingreso_lote_id = lote.ingreso_lote_id,
-            ))
+                permitir_negativo = True,
+            )
 
             unidades_totales += item["cantidad_ingreso"]
 

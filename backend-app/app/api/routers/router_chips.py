@@ -2,7 +2,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, SQLModel, select
-from sqlalchemy import exc
+from sqlalchemy import exc, update
 from typing import List, Optional
 from io import BytesIO
 
@@ -39,6 +39,10 @@ class IngresoLoteChipCreate(SQLModel):
     receptor_id: Optional[int] = None
     observaciones: Optional[str] = None
     chips: List[ChipLoteItem]
+
+
+class CambioPrecioGlobalChip(SQLModel):
+    precio: int
 
 
 router = APIRouter(
@@ -193,6 +197,47 @@ def crear_chip(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@router.post("/cambio-precio-global")
+def cambio_precio_global(
+    payload: CambioPrecioGlobalChip,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(require_admin),
+):
+    """
+    Cambia el precio de todos los chips activos (estado DISPONIBLE) al valor indicado.
+    Solo accesible por administradores.
+    """
+    if payload.precio <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El precio debe ser mayor a 0."
+        )
+
+    stmt = (
+        update(Chip)
+        .where(Chip.estado == "DISPONIBLE")  # type: ignore
+        .values(precio=payload.precio)
+    )
+
+    try:
+        result = session.exec(stmt)
+        session.commit()
+    except exc.IntegrityError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    actualizados = result.rowcount #type: ignore
+    return {
+        "ok": True,
+        "mensaje": f"Se actualizó el precio de {actualizados} chips a ${payload.precio}.",
+        "chips_actualizados": actualizados,
+        "precio": payload.precio,
+    }
 
 
 @router.put("/{chip_id}")

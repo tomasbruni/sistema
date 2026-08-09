@@ -92,7 +92,8 @@
 }
 
 .form-group input,
-.form-group select {
+.form-group select,
+.form-group textarea {
   padding: 8px 10px;
   border: 1px solid #ccc;
   border-radius: 4px;
@@ -100,8 +101,14 @@
   background: #fff;
 }
 
+.form-group textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+
 .form-group input:focus,
-.form-group select:focus {
+.form-group select:focus,
+.form-group textarea:focus {
   outline: none;
   border-color: #1a1a2e;
 }
@@ -109,6 +116,13 @@
 .form-group select:disabled {
   background: #f0f0f0;
   color: #999;
+}
+
+.form-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #666;
 }
 
 .form-check label {

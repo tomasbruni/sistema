@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import './AccesoriosPage.css'
-import { api } from '../api/api'
+import { api, LIMIT } from '../api/api'
 import { useAlerta } from '../hooks/useAlerta'
 import { useAuth } from '../hooks/useAuth'
 import { useModalDetalle } from '../hooks/ventas/useModalDetalles'
 import ModalHistorialReparaciones from '../components/reparaciones/ModalHistorialReparaciones'
-import { formatFecha, formatPrecio } from '../helpers/formats'
+import { formatFecha, formatFechaCorta, formatPrecio } from '../helpers/formats'
 
 const ESTADOS = ['EN_REVISION', 'EN_REPARACION', 'ENTREGADO', 'CANCELADO', 'REPARACION_GARANTIA', 'ENTREGADO_GARANTIA']
 
@@ -28,6 +28,7 @@ const formEditarVacio = {
   descripcion:      '',
   pago_parcial:     '',
   pago_reparador:   '',
+  pagado:           false,
   telefono_cliente: '',
   dni_cliente:      '',
   mail_cliente:     '',
@@ -35,8 +36,8 @@ const formEditarVacio = {
 
 export default function ReparacionesPage() {
   const { alerta, mostrarAlerta, cerrarAlerta } = useAlerta()
-  const { rol }    = useAuth()
-  const esAdmin    = rol === 'admin'
+  const { rol, usuarioId } = useAuth()
+  const esAdmin            = rol === 'admin'
 
   const [reparaciones, setReparaciones]   = useState([])
   const [loadingLista, setLoadingLista]   = useState(false)
@@ -47,10 +48,15 @@ export default function ReparacionesPage() {
   const [filtroLocalId, setFiltroLocalId]     = useState(null)
   const [filtroEstado, setFiltroEstado]       = useState(null)
   const [filtroUsuarioId, setFiltroUsuarioId] = useState(null)
+  const [filtroPagado, setFiltroPagado]       = useState(null)
   const [fechaDesde, setFechaDesde]           = useState('')
   const [fechaHasta, setFechaHasta]           = useState('')
   const [busqueda, setBusqueda]               = useState('')
   const debounceRef                           = useRef(null)
+
+  // Paginación
+  const [pagina, setPagina] = useState(0)
+  const [hayMas, setHayMas] = useState(false)
 
   // Formulario crear
   const [mostrarCrear, setMostrarCrear] = useState(false)
@@ -63,45 +69,39 @@ export default function ReparacionesPage() {
   const [loadingEditar, setLoadingEditar] = useState(false)
 
   // Modal agregar monto
-  const [montoRepId, setMontoRepId]           = useState(null)
-  const [montoAgregar, setMontoAgregar]       = useState('')
-  const [montoObs, setMontoObs]               = useState('')
-  const [montoFecha, setMontoFecha]           = useState('')
-  const [montoUsuarioId, setMontoUsuarioId]   = useState('')
-  const [loadingMonto, setLoadingMonto]       = useState(false)
+  const [montoRepId, setMontoRepId]     = useState(null)
+  const [montoAgregar, setMontoAgregar] = useState('')
+  const [montoObs, setMontoObs]         = useState('')
+  const [loadingMonto, setLoadingMonto] = useState(false)
 
   // Modal cambio pago parcial
-  const [cambioPagoRepId, setCambioPagoRepId]         = useState(null)
-  const [cambioPagoMonto, setCambioPagoMonto]         = useState('')
-  const [cambioPagoObs, setCambioPagoObs]             = useState('')
-  const [cambioPagoFecha, setCambioPagoFecha]         = useState('')
-  const [cambioPagoUsuarioId, setCambioPagoUsuarioId] = useState('')
-  const [loadingCambioPago, setLoadingCambioPago]     = useState(false)
+  const [cambioPagoRepId, setCambioPagoRepId]     = useState(null)
+  const [cambioPagoMonto, setCambioPagoMonto]     = useState('')
+  const [cambioPagoObs, setCambioPagoObs]         = useState('')
+  const [loadingCambioPago, setLoadingCambioPago] = useState(false)
 
   // Modal aceptar (EN_REVISION → EN_REPARACION)
-  const [aceptarRepId, setAceptarRepId]           = useState(null)
-  const [aceptarTotal, setAceptarTotal]           = useState('')
+  const [aceptarRepId, setAceptarRepId]             = useState(null)
+  const [aceptarTotal, setAceptarTotal]             = useState('')
   const [aceptarPagoParcial, setAceptarPagoParcial] = useState('')
-  const [aceptarObs, setAceptarObs]               = useState('')
-  const [aceptarFecha, setAceptarFecha]           = useState('')
-  const [aceptarUsuarioId, setAceptarUsuarioId]   = useState('')
-  const [loadingAceptar, setLoadingAceptar]       = useState(false)
+  const [aceptarObs, setAceptarObs]                 = useState('')
+  const [loadingAceptar, setLoadingAceptar]         = useState(false)
 
   // Modal cancelar
-  const [cancelarRepId, setCancelarRepId]         = useState(null)
-  const [cancelarMonto, setCancelarMonto]         = useState('')
-  const [cancelarObs, setCancelarObs]             = useState('')
-  const [cancelarFecha, setCancelarFecha]         = useState('')
-  const [cancelarUsuarioId, setCancelarUsuarioId] = useState('')
-  const [loadingCancelar, setLoadingCancelar]     = useState(false)
+  const [cancelarRepId, setCancelarRepId]     = useState(null)
+  const [cancelarMonto, setCancelarMonto]     = useState('')
+  const [cancelarObs, setCancelarObs]         = useState('')
+  const [loadingCancelar, setLoadingCancelar] = useState(false)
 
   // Modal transición (entregar / garantia / entregar-garantia)
-  const [transRepId, setTransRepId]           = useState(null)
-  const [transAccion, setTransAccion]         = useState(null)
-  const [transObs, setTransObs]               = useState('')
-  const [transFecha, setTransFecha]           = useState('')
-  const [transUsuarioId, setTransUsuarioId]   = useState('')
-  const [loadingTrans, setLoadingTrans]       = useState(false)
+  const [transRepId, setTransRepId]     = useState(null)
+  const [transAccion, setTransAccion]   = useState(null)
+  const [transObs, setTransObs]         = useState('')
+  const [loadingTrans, setLoadingTrans] = useState(false)
+
+  // Campos admin compartidos — solo un modal abierto a la vez
+  const [adminFecha, setAdminFecha]         = useState('')
+  const [adminUsuarioId, setAdminUsuarioId] = useState('')
 
   // Historial
   const [historialRep, setHistorialRep] = useState(null)
@@ -116,24 +116,24 @@ export default function ReparacionesPage() {
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
-  const fetchReparaciones = async (
-    localId   = filtroLocalId,
-    estado    = filtroEstado,
-    usuarioId = filtroUsuarioId,
-    dni       = busqueda,
-    desde     = fechaDesde,
-    hasta     = fechaHasta,
-  ) => {
+  const fetchReparaciones = async (pag = pagina, overrides = {}) => {
     setLoadingLista(true)
+    const params = {
+      skip:        pag * LIMIT,
+      limit:       LIMIT + 1,  // +1 para detectar si hay página siguiente
+      local_id:    filtroLocalId,
+      estado:      filtroEstado,
+      usuario_id:  filtroUsuarioId,
+      dni_cliente: busqueda || null,
+      fecha_desde: fechaDesde || null,
+      fecha_hasta: fechaHasta || null,
+      pagado:      filtroPagado,
+      ...overrides,
+    }
     try {
-      const data = await api.listarReparaciones({
-        local_id: localId, estado,
-        usuario_id: usuarioId,
-        dni_cliente: dni || null,
-        fecha_desde: desde || null,
-        fecha_hasta: hasta || null,
-      })
-      setReparaciones(data)
+      const data = await api.listarReparaciones(params)
+      setHayMas(data.length > LIMIT)
+      setReparaciones(data.slice(0, LIMIT))
     } catch (err) {
       mostrarAlerta('error', `Error al cargar reparaciones: ${err.message}`)
     } finally {
@@ -143,48 +143,63 @@ export default function ReparacionesPage() {
 
   // ── Filtros ───────────────────────────────────────────────────────────────
 
+  const irAPagina = (nueva) => { setPagina(nueva); fetchReparaciones(nueva) }
+
+  // Al cambiar un filtro siempre se vuelve a la primera página
+  const aplicarFiltros = (overrides = {}) => { setPagina(0); fetchReparaciones(0, overrides) }
+
   const handleBusqueda = (e) => {
     const val = e.target.value
     setBusqueda(val)
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() =>
-      fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, val, fechaDesde, fechaHasta), 400)
+    debounceRef.current = setTimeout(() => aplicarFiltros({ dni_cliente: val || null }), 400)
   }
 
   const handleFiltroLocal = (localId) => {
     const nuevo = filtroLocalId === localId ? null : localId
     setFiltroLocalId(nuevo)
-    fetchReparaciones(nuevo, filtroEstado, filtroUsuarioId, busqueda, fechaDesde, fechaHasta)
+    aplicarFiltros({ local_id: nuevo })
   }
 
   const handleFiltroEstado = (estado) => {
     const nuevo = filtroEstado === estado ? null : estado
     setFiltroEstado(nuevo)
-    fetchReparaciones(filtroLocalId, nuevo, filtroUsuarioId, busqueda, fechaDesde, fechaHasta)
+    aplicarFiltros({ estado: nuevo })
   }
 
   const handleFiltroUsuario = (usuarioId) => {
     const nuevo = filtroUsuarioId === usuarioId ? null : usuarioId
     setFiltroUsuarioId(nuevo)
-    fetchReparaciones(filtroLocalId, filtroEstado, nuevo, busqueda, fechaDesde, fechaHasta)
+    aplicarFiltros({ usuario_id: nuevo })
+  }
+
+  const handleFiltroPagado = (valor) => {
+    const nuevo = filtroPagado === valor ? null : valor
+    setFiltroPagado(nuevo)
+    aplicarFiltros({ pagado: nuevo })
   }
 
   const handleFechaDesde = (e) => {
     const val = e.target.value
     setFechaDesde(val)
-    fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, busqueda, val, fechaHasta)
+    aplicarFiltros({ fecha_desde: val || null })
   }
 
   const handleFechaHasta = (e) => {
     const val = e.target.value
     setFechaHasta(val)
-    fetchReparaciones(filtroLocalId, filtroEstado, filtroUsuarioId, busqueda, fechaDesde, val)
+    aplicarFiltros({ fecha_hasta: val || null })
   }
 
   const limpiarFiltros = () => {
     setFiltroLocalId(null); setFiltroEstado(null); setFiltroUsuarioId(null)
+    setFiltroPagado(null)
     setFechaDesde(''); setFechaHasta(''); setBusqueda('')
-    fetchReparaciones(null, null, null, '', '', '')
+    setPagina(0)
+    fetchReparaciones(0, {
+      local_id: null, estado: null, usuario_id: null,
+      dni_cliente: null, fecha_desde: null, fecha_hasta: null, pagado: null,
+    })
   }
 
   // ── Crear ─────────────────────────────────────────────────────────────────
@@ -194,7 +209,7 @@ export default function ReparacionesPage() {
     setLoadingCrear(true)
     const esRevision = formCrear.estado_inicial === 'EN_REVISION'
     try {
-      await api.crearReparacion({
+      const res = await api.crearReparacion({
         estado_inicial:   formCrear.estado_inicial,
         celular:          formCrear.celular.trim(),
         nombre_cliente:   formCrear.nombre_cliente.trim(),
@@ -209,6 +224,11 @@ export default function ReparacionesPage() {
         ...(esAdmin && formCrear.usuario_id    ? { usuario_id: Number(formCrear.usuario_id) } : {}),
       })
       mostrarAlerta('success', 'Reparación creada correctamente.')
+      const nuevoId = res?.reparacion?.reparacion_id
+      if (nuevoId) await descargarPdf(
+        () => api.descargarCertificadoRecepcion(nuevoId),
+        `recepcion_${String(nuevoId).padStart(4, '0')}.pdf`
+      )
       setMostrarCrear(false)
       setFormCrear(formCrearVacio)
       fetchReparaciones()
@@ -227,6 +247,7 @@ export default function ReparacionesPage() {
       descripcion:      rep.descripcion ?? '',
       pago_parcial:     rep.pago_parcial,
       pago_reparador:   rep.pago_reparador ?? '',
+      pagado:           rep.pagado ?? false,
       telefono_cliente: rep.telefono_cliente,
       dni_cliente:      rep.dni_cliente ?? '',
       mail_cliente:     rep.mail_cliente ?? '',
@@ -248,6 +269,9 @@ export default function ReparacionesPage() {
       if (esAdmin && formEditar.pago_reparador !== '') {
         body.pago_reparador = Number(formEditar.pago_reparador)
       }
+      if (esAdmin) {
+        body.pagado = formEditar.pagado
+      }
       await api.actualizarReparacion(editandoId, body)
       mostrarAlerta('success', 'Reparación actualizada correctamente.')
       setEditandoId(null)
@@ -266,13 +290,13 @@ export default function ReparacionesPage() {
     setLoadingMonto(true)
     try {
       await api.cambiarPrecioReparacion(montoRepId, {
-        monto_agregado: Number(montoAgregar),
+        precio_final: Number(montoAgregar),
         observaciones:  montoObs.trim() || null,
-        ...(esAdmin && montoFecha     ? { fecha: montoFecha } : {}),
-        ...(esAdmin && montoUsuarioId ? { usuario_id: Number(montoUsuarioId) } : {}),
+        ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+        ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Monto actualizado correctamente.')
-      setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setMontoFecha(''); setMontoUsuarioId('')
+      setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -296,11 +320,11 @@ export default function ReparacionesPage() {
       await api.cambioPagoParcialReparacion(cambioPagoRepId, {
         nuevo_monto:   Number(cambioPagoMonto),
         observaciones: cambioPagoObs.trim() || null,
-        ...(esAdmin && cambioPagoFecha     ? { fecha: cambioPagoFecha } : {}),
-        ...(esAdmin && cambioPagoUsuarioId ? { usuario_id: Number(cambioPagoUsuarioId) } : {}),
+        ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+        ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Pago parcial actualizado correctamente.')
-      setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs(''); setCambioPagoFecha(''); setCambioPagoUsuarioId('')
+      setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -319,16 +343,21 @@ export default function ReparacionesPage() {
   const handleSubmitAceptar = async (e) => {
     e.preventDefault()
     setLoadingAceptar(true)
+    const repId = aceptarRepId
     try {
-      await api.aceptarReparacion(aceptarRepId, {
+      await api.aceptarReparacion(repId, {
         total_final:           Number(aceptarTotal),
         pago_parcial_agregado: Number(aceptarPagoParcial),
         observaciones:         aceptarObs.trim() || null,
-        ...(esAdmin && aceptarFecha     ? { fecha: aceptarFecha } : {}),
-        ...(esAdmin && aceptarUsuarioId ? { usuario_id: Number(aceptarUsuarioId) } : {}),
+        ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+        ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Reparación aceptada correctamente.')
-      setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs(''); setAceptarFecha(''); setAceptarUsuarioId('')
+      await descargarPdf(
+        () => api.descargarCertificadoRecepcion(repId),
+        `recepcion_${String(repId).padStart(4, '0')}.pdf`
+      )
+      setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -347,15 +376,20 @@ export default function ReparacionesPage() {
   const handleSubmitCancelar = async (e) => {
     e.preventDefault()
     setLoadingCancelar(true)
+    const repId = cancelarRepId
     try {
-      await api.cancelarReparacion(cancelarRepId, {
+      await api.cancelarReparacion(repId, {
         monto_a_devolver: cancelarMonto !== '' ? Number(cancelarMonto) : null,
         observaciones:    cancelarObs.trim() || null,
-        ...(esAdmin && cancelarFecha     ? { fecha: cancelarFecha } : {}),
-        ...(esAdmin && cancelarUsuarioId ? { usuario_id: Number(cancelarUsuarioId) } : {}),
+        ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+        ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
       })
       mostrarAlerta('success', 'Reparación cancelada.')
-      setCancelarRepId(null); setCancelarMonto(''); setCancelarObs(''); setCancelarFecha(''); setCancelarUsuarioId('')
+      await descargarPdf(
+        () => api.descargarCertificadoCancelacion(repId),
+        `cancelacion_${String(repId).padStart(4, '0')}.pdf`
+      )
+      setCancelarRepId(null); setCancelarMonto(''); setCancelarObs(''); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -377,15 +411,22 @@ export default function ReparacionesPage() {
     setLoadingTrans(true)
     const body = {
       observaciones: transObs.trim() || null,
-      ...(esAdmin && transFecha     ? { fecha: transFecha } : {}),
-      ...(esAdmin && transUsuarioId ? { usuario_id: Number(transUsuarioId) } : {}),
+      ...(esAdmin && adminFecha     ? { fecha: adminFecha } : {}),
+      ...(esAdmin && adminUsuarioId ? { usuario_id: Number(adminUsuarioId) } : {}),
     }
+    const repId = transRepId
+    const accion = transAccion
     try {
-      if (transAccion === 'entregar')               await api.entregarReparacion(transRepId, body)
-      else if (transAccion === 'garantia')          await api.garantiaReparacion(transRepId, body)
-      else if (transAccion === 'entregar-garantia') await api.entregarGarantiaReparacion(transRepId, body)
+      if (accion === 'entregar')               await api.entregarReparacion(repId, body)
+      else if (accion === 'garantia')          await api.garantiaReparacion(repId, body)
+      else if (accion === 'entregar-garantia') await api.entregarGarantiaReparacion(repId, body)
       mostrarAlerta('success', 'Reparación actualizada correctamente.')
-      setTransRepId(null); setTransAccion(null)
+      // Al entregar (normal o por garantía) se genera el certificado de garantía
+      if (accion === 'entregar' || accion === 'entregar-garantia') await descargarPdf(
+        () => api.descargarCertificadoGarantia(repId),
+        `garantia_${String(repId).padStart(4, '0')}.pdf`
+      )
+      setTransRepId(null); setTransAccion(null); setAdminFecha(''); setAdminUsuarioId('')
       fetchReparaciones()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -407,11 +448,12 @@ export default function ReparacionesPage() {
   const cerrarTodo = () => {
     setMostrarCrear(false); setFormCrear(formCrearVacio)
     setEditandoId(null)
-    setMontoRepId(null); setMontoAgregar(''); setMontoObs(''); setMontoFecha(''); setMontoUsuarioId('')
-    setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs(''); setCambioPagoFecha(''); setCambioPagoUsuarioId('')
-    setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs(''); setAceptarFecha(''); setAceptarUsuarioId('')
-    setCancelarRepId(null); setCancelarMonto(''); setCancelarObs(''); setCancelarFecha(''); setCancelarUsuarioId('')
-    setTransRepId(null); setTransAccion(null); setTransObs(''); setTransFecha(''); setTransUsuarioId('')
+    setMontoRepId(null); setMontoAgregar(''); setMontoObs('')
+    setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs('')
+    setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial(''); setAceptarObs('')
+    setCancelarRepId(null); setCancelarMonto(''); setCancelarObs('')
+    setTransRepId(null); setTransAccion(null); setTransObs('')
+    setAdminFecha(''); setAdminUsuarioId('')
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -445,16 +487,15 @@ export default function ReparacionesPage() {
     'entregar-garantia': 'Entregar garantía',
   }[accion] ?? accion)
 
-  const adminCampos = (fecha, setFecha, usuarioId, setUsuarioId) => esAdmin && (
+  const adminCampos = () => esAdmin && (
     <div className="form-row">
       <div className="form-group">
         <label>Fecha</label>
-        <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} />
+        <input type="date" value={adminFecha} onChange={e => setAdminFecha(e.target.value)} />
       </div>
       <div className="form-group">
         <label>Vendedor/a</label>
-        <select value={usuarioId} onChange={e => setUsuarioId(e.target.value)}>
-          <option value="">Usuario actual</option>
+        <select value={adminUsuarioId || usuarioId || ''} onChange={e => setAdminUsuarioId(e.target.value)}>
           {usuarios.map(u => <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>)}
         </select>
       </div>
@@ -583,9 +624,8 @@ export default function ReparacionesPage() {
                 </div>
                 <div className="form-group">
                   <label>Vendedor/a</label>
-                  <select value={formCrear.usuario_id}
+                  <select value={formCrear.usuario_id || usuarioId || ''}
                     onChange={e => setFormCrear(p => ({ ...p, usuario_id: e.target.value }))}>
-                    <option value="">Usuario actual</option>
                     {usuarios.map(u => <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>)}
                   </select>
                 </div>
@@ -646,6 +686,14 @@ export default function ReparacionesPage() {
                     onChange={e => setFormEditar(p => ({ ...p, pago_reparador: e.target.value }))} />
                 </div>
               )}
+              {esAdmin && (
+                <div className="form-group" style={{ justifyContent: 'center' }}>
+                  <label>Pagado al reparador</label>
+                  <input type="checkbox" checked={formEditar.pagado}
+                    onChange={e => setFormEditar(p => ({ ...p, pagado: e.target.checked }))}
+                    style={{ width: 'auto', marginTop: 10 }} />
+                </div>
+              )}
             </div>
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
@@ -661,11 +709,11 @@ export default function ReparacionesPage() {
       {/* ── Modal agregar monto ── */}
       {montoRepId && (
         <div className="form-card">
-          <h3>Agregar monto — reparacion #{montoRepId}</h3>
+          <h3>Cambiar precio final — reparacion #{montoRepId}</h3>
           <form onSubmit={handleSubmitMonto} className="acc-form">
             <div className="form-row">
               <div className="form-group">
-                <label>Monto a agregar *</label>
+                <label>Nuevo precio final *</label>
                 <input type="number" value={montoAgregar} min={1} required
                   onChange={e => setMontoAgregar(e.target.value)} placeholder="Ej: 5000" />
               </div>
@@ -675,7 +723,7 @@ export default function ReparacionesPage() {
                   onChange={e => setMontoObs(e.target.value)} placeholder="Motivo (opcional)" />
               </div>
             </div>
-            {adminCampos(montoFecha, setMontoFecha, montoUsuarioId, setMontoUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setMontoRepId(null); setMontoAgregar(''); setMontoObs('') }}
@@ -705,7 +753,7 @@ export default function ReparacionesPage() {
                   onChange={e => setCambioPagoObs(e.target.value)} placeholder="Motivo de la corrección (opcional)" />
               </div>
             </div>
-            {adminCampos(cambioPagoFecha, setCambioPagoFecha, cambioPagoUsuarioId, setCambioPagoUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setCambioPagoRepId(null); setCambioPagoMonto(''); setCambioPagoObs('') }}
@@ -745,7 +793,7 @@ export default function ReparacionesPage() {
                   onChange={e => setAceptarObs(e.target.value)} placeholder="Diagnóstico, notas (opcional)" />
               </div>
             </div>
-            {adminCampos(aceptarFecha, setAceptarFecha, aceptarUsuarioId, setAceptarUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setAceptarRepId(null); setAceptarTotal(''); setAceptarPagoParcial('') }}
@@ -775,7 +823,7 @@ export default function ReparacionesPage() {
                   onChange={e => setCancelarObs(e.target.value)} placeholder="Opcional" />
               </div>
             </div>
-            {adminCampos(cancelarFecha, setCancelarFecha, cancelarUsuarioId, setCancelarUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setCancelarRepId(null); setCancelarMonto(''); setCancelarObs('') }}
@@ -800,7 +848,7 @@ export default function ReparacionesPage() {
                   onChange={e => setTransObs(e.target.value)} placeholder="Opcional" />
               </div>
             </div>
-            {adminCampos(transFecha, setTransFecha, transUsuarioId, setTransUsuarioId)}
+            {adminCampos()}
             <div className="form-actions">
               <button type="button" className="btn btn-secondary"
                 onClick={() => { setTransRepId(null); setTransAccion(null) }}
@@ -857,6 +905,19 @@ export default function ReparacionesPage() {
                 ))}
               </div>
             </div>
+            {esAdmin && (
+              <div className="filtros-row">
+                <span className="filtros-sublabel">Pago al reparador:</span>
+                <div className="filtros-chips">
+                  <button
+                    className={`filtro-chip ${filtroPagado === true ? 'filtro-chip-activo' : ''}`}
+                    onClick={() => handleFiltroPagado(true)}>Pagados</button>
+                  <button
+                    className={`filtro-chip ${filtroPagado === false ? 'filtro-chip-activo' : ''}`}
+                    onClick={() => handleFiltroPagado(false)}>No pagados</button>
+                </div>
+              </div>
+            )}
             <div className="filtros-row">
               <span className="filtros-sublabel">Fecha:</span>
               <div className="filtros-chips">
@@ -864,7 +925,7 @@ export default function ReparacionesPage() {
                 <input type="date" value={fechaHasta} onChange={handleFechaHasta} />
               </div>
             </div>
-            {(filtroLocalId || filtroEstado || filtroUsuarioId || fechaDesde || fechaHasta || busqueda) && (
+            {(filtroLocalId || filtroEstado || filtroUsuarioId || filtroPagado !== null || fechaDesde || fechaHasta || busqueda) && (
               <button className="btn-limpiar-filtros" onClick={limpiarFiltros}>Limpiar filtros</button>
             )}
           </div>
@@ -888,6 +949,7 @@ export default function ReparacionesPage() {
                 <th>Total</th>
                 <th>Pago parcial</th>
                 {esAdmin && <th>Pago reparador</th>}
+                {esAdmin && <th>Pagado</th>}
                 <th>Estado</th>
                 <th>Vendedor/a</th>
                 <th>Acciones</th>
@@ -898,12 +960,13 @@ export default function ReparacionesPage() {
                 <React.Fragment key={rep.reparacion_id}>
                   <tr>
                     <td>{rep.reparacion_id}</td>
-                    <td>{formatFecha(rep.fecha_ingreso)}</td>
+                    <td>{formatFechaCorta(rep.fecha_ingreso)}</td>
                     <td>{rep.celular}</td>
                     <td>{rep.nombre_cliente}</td>
                     <td>{rep.total != null ? formatPrecio(rep.total) : '—'}</td>
                     <td>{formatPrecio(rep.pago_parcial)}</td>
                     {esAdmin && <td>{rep.pago_reparador != null ? formatPrecio(rep.pago_reparador) : '-'}</td>}
+                    {esAdmin && <td>{rep.pagado ? <span className="estado-badge activo">Sí</span> : <span className="estado-badge">No</span>}</td>}
                     <td>
                       <span className={`estado-badge ${estadoClase(rep.estado)}`}>
                         {rep.estado.replace(/_/g, ' ')}
@@ -940,14 +1003,6 @@ export default function ReparacionesPage() {
                         <button className="btn btn-sm btn-secondary"
                           onClick={() => abrirCancelar(rep)}>
                           Cancelar
-                        </button>
-                        <button className="btn btn-sm btn-secondary"
-                          onClick={() => { cerrarTodo(); setMontoRepId(rep.reparacion_id) }}>
-                          Agregar monto total
-                        </button>
-                        <button className="btn btn-sm btn-secondary"
-                          onClick={() => abrirCambioPago(rep)}>
-                          Corregir pago
                         </button>
                         <button className="btn btn-sm btn-secondary"
                           onClick={() => descargarPdf(
@@ -992,6 +1047,22 @@ export default function ReparacionesPage() {
                         </button>
                       )}
 
+                      {/* ── Cambiar precio final (no en revisión: el total se fija al aceptar, ni cancelado) ── */}
+                      {rep.estado !== 'CANCELADO' && rep.estado !== 'EN_REVISION' && (
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => { cerrarTodo(); setMontoRepId(rep.reparacion_id) }}>
+                          Cambiar precio final
+                        </button>
+                      )}
+
+                      {/* ── Corregir adelanto (solo mientras la plata sigue abierta) ── */}
+                      {(rep.estado === 'EN_REVISION' || rep.estado === 'EN_REPARACION') && (
+                        <button className="btn btn-sm btn-secondary"
+                          onClick={() => abrirCambioPago(rep)}>
+                          Corregir adelanto
+                        </button>
+                      )}
+
                       {/* ── Siempre visibles ── */}
                       <button className="btn btn-sm btn-secondary"
                         onClick={() => abrirEditar(rep)}>Editar</button>
@@ -1004,6 +1075,11 @@ export default function ReparacionesPage() {
               ))}
             </tbody>
           </table>
+          <div className="paginacion">
+            <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina - 1)} disabled={pagina === 0}>← Anterior</button>
+            <span className="pagina-info">Página {pagina + 1}</span>
+            <button className="btn btn-secondary btn-sm" onClick={() => irAPagina(pagina + 1)} disabled={!hayMas}>Siguiente →</button>
+          </div>
         </div>
       )}
 

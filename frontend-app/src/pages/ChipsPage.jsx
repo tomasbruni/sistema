@@ -20,7 +20,7 @@ const formVacio = {
 
 // ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
 export default function ChipsPage() {
-  const { alerta, mostrarAlerta }       = useAlerta()
+  const { alerta, mostrarAlerta, cerrarAlerta } = useAlerta()
 
   const [chips, setChips]               = useState([])
   const [form, setForm]                 = useState(formVacio)
@@ -46,6 +46,10 @@ export default function ChipsPage() {
   // Paginación
   const [pagina, setPagina]   = useState(0)
   const [hayMas, setHayMas]   = useState(false)
+
+  // ── Cambio de precio global ────────────────────────────────────────────────
+  const [modoPrecioGlobal, setModoPrecioGlobal] = useState(false)
+  const [precioGlobal, setPrecioGlobal]         = useState('')
 
   // ── Ingreso por lote ──────────────────────────────────────────────────────
   const [modoIngreso, setModoIngreso]       = useState(false)
@@ -225,6 +229,36 @@ export default function ChipsPage() {
     }
   }
 
+  // ── Cambio de precio global ────────────────────────────────────────────────
+  const abrirPrecioGlobal = () => {
+    setModoPrecioGlobal(true)
+    setPrecioGlobal('')
+  }
+
+  const cancelarPrecioGlobal = () => {
+    setModoPrecioGlobal(false)
+    setPrecioGlobal('')
+  }
+
+  const handleCambioPrecioGlobal = async (e) => {
+    e.preventDefault()
+    const precio = Number(precioGlobal)
+    if (!precio || precio <= 0) {
+      mostrarAlerta('error', 'Ingresá un precio válido mayor a 0.')
+      return
+    }
+    if (!window.confirm(`¿Cambiar el precio de TODOS los chips disponibles a $${precio.toLocaleString()}?`)) return
+
+    try {
+      const res = await api.cambioPrecioGlobalChips(precio)
+      mostrarAlerta('success', res.mensaje)
+      cancelarPrecioGlobal()
+      fetchChips(pagina)
+    } catch (err) {
+      mostrarAlerta('error', `Error: ${err.message}`)
+    }
+  }
+
   // ── Ingreso por lote: handlers ────────────────────────────────────────────
   const abrirIngreso = () => {
     setModoIngreso(true)
@@ -302,21 +336,29 @@ export default function ChipsPage() {
     <div className="page-container">
       <div className="page-header">
         <h2>Chips</h2>
-        {!mostrarForm && !modoIngreso && (
+        {!mostrarForm && !modoIngreso && !modoPrecioGlobal && (
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-primary" onClick={abrirCrear}>+ Nuevo chip</button>
             <button className="btn btn-secondary" onClick={abrirIngreso}>Ingresar lote</button>
+            <button className="btn btn-secondary" onClick={abrirPrecioGlobal}>Cambiar precio global</button>
           </div>
         )}
         {modoIngreso && (
           <button className="btn btn-secondary" onClick={cancelarIngreso}>Cancelar ingreso</button>
         )}
+        {modoPrecioGlobal && (
+          <button className="btn btn-secondary" onClick={cancelarPrecioGlobal}>Cancelar</button>
+        )}
       </div>
 
       {/* Alerta */}
       {alerta && (
-        <div className={`alerta alerta-${alerta.tipo}`}>{alerta.msg}</div>
+        <div className={`alerta alerta-${alerta.tipo}`}>
+          <span>{alerta.msg}</span>
+          <button className="alerta-cerrar" onClick={cerrarAlerta}>✕</button>
+        </div>
       )}
+
 
       {/* ── Modo ingreso por lote ── */}
       {modoIngreso && (
@@ -339,6 +381,33 @@ export default function ChipsPage() {
             loading={loadingLote}
           />
         </>
+      )}
+
+      {/* ── Cambio de precio global ── */}
+      {modoPrecioGlobal && (
+        <div className="form-card">
+          <h3>Cambiar precio global</h3>
+          <p>Se aplicará el nuevo precio a <strong>todos los chips disponibles</strong>.</p>
+          <form onSubmit={handleCambioPrecioGlobal} className="acc-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label>Nuevo precio *</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={precioGlobal}
+                  onChange={(e) => setPrecioGlobal(e.target.value)}
+                  required
+                  placeholder="Ej: 1500"
+                />
+              </div>
+            </div>
+            <div className="form-actions">
+              <button type="button" className="btn btn-secondary" onClick={cancelarPrecioGlobal}>Cancelar</button>
+              <button type="submit" className="btn btn-primary">Aplicar precio</button>
+            </div>
+          </form>
+        </div>
       )}
 
       {/* ── Formulario chip individual ── */}
@@ -419,7 +488,7 @@ export default function ChipsPage() {
       )}
 
       {/* ── Buscador y toolbar ── */}
-      {!mostrarForm && !modoIngreso && (
+      {!mostrarForm && !modoIngreso && !modoPrecioGlobal && (
         <div className="lista-toolbar">
           <input
             className="buscador"
@@ -440,7 +509,7 @@ export default function ChipsPage() {
       )}
 
       {/* ── Filtros ── */}
-      {!mostrarForm && !modoIngreso && (
+      {!mostrarForm && !modoIngreso && !modoPrecioGlobal && (
         <div className="filtros-panel">
           <span className="filtros-label">Filtrar por:</span>
 
@@ -500,7 +569,7 @@ export default function ChipsPage() {
       )}
 
       {/* ── Tabla ── */}
-      {!modoIngreso && (
+      {!modoIngreso && !modoPrecioGlobal && (
         loadingLista ? (
           <p className="empty-msg">Cargando...</p>
         ) : chips.length === 0 ? (

@@ -33,12 +33,13 @@ export default function AccesoriosPage() {
     nombreTipo, nombreSubtipo,
   } = useListaFiltrada((p) => api.listarAccesorios(p), { conCatalogos: true })
 
-  const [loadingExport, setLoadingExport] = useState(false)
+  const [loading, setLoading]             = useState(null) // null | 'export' | 'form' | 'masivo'
   const [form, setForm]                   = useState(formVacio)
   const [editandoId, setEditandoId]       = useState(null)
   const [mostrarForm, setMostrarForm]     = useState(false)
-  const [loading, setLoading]             = useState(false)
   const [modalNuevo, setModalNuevo]       = useState(null) // 'tipo' | 'subtipo' | null
+  const [mostrarFormMasivo, setMostrarFormMasivo] = useState(false)
+  const [formMasivo, setFormMasivo]               = useState({ tipo_id: null, subtipo_id: null, nuevo_precio: '' })
   const nombreRef = useRef(null)
 
   const { options, setOption, buscadorSelect } =
@@ -63,7 +64,7 @@ export default function AccesoriosPage() {
 
   // ── Exportar ─────────────────────────────────────────────────────────────
   const handleExportar = async () => {
-    setLoadingExport(true)
+    setLoading('export')
     try {
       const blob = await api.exportarAccesorios({
         buscar:     busqueda,
@@ -80,7 +81,7 @@ export default function AccesoriosPage() {
     } catch (err) {
       mostrarAlerta('error', `Error al exportar: ${err.message}`)
     } finally {
-      setLoadingExport(false)
+      setLoading(null)
     }
   }
 
@@ -136,7 +137,7 @@ export default function AccesoriosPage() {
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setLoading(true)
+    setLoading('form')
 
     const body = {
       nombre:            form.nombre,
@@ -156,24 +157,6 @@ export default function AccesoriosPage() {
         refetch()
         cancelar()
       } else {
-        const res = await api.verificarDuplicado(body)
-
-        if (res?.tiene_duplicados) {
-          const lineas = res.duplicados.map(d => {
-            const etiqueta = d.es_mismo_precio ? '🔴 Duplicado exacto' : '🟡 Similar'
-            return `  ${etiqueta}: "${d.nombre}" — ID: ${d.accesorio_id} — $${d.precio.toLocaleString()}`
-          }).join('\n')
-
-          const encabezado = res.es_duplicado_exacto
-            ? '🔴 Ya existe un accesorio con el mismo nombre Y precio:'
-            : '🟡 Ya existen accesorios con nombre similar (distinto precio):'
-
-          const confirmar = window.confirm(
-            `${encabezado}\n\n${lineas}\n\n¿Querés crearlo de todas formas?`
-          )
-          if (!confirmar) { setLoading(false); return }
-        }
-
         await api.crearAccesorio(body)
         mostrarAlerta('success', 'Accesorio creado correctamente.')
         refetch()
@@ -183,7 +166,33 @@ export default function AccesoriosPage() {
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
     } finally {
-      setLoading(false)
+      setLoading(null)
+    }
+  }
+
+  // ── Cambio de precio masivo ───────────────────────────────────────────────
+  const handleSubmitMasivo = async (e) => {
+    e.preventDefault()
+    if (!formMasivo.tipo_id) return
+    const n = parseInt(formMasivo.nuevo_precio)
+    if (isNaN(n) || n < 0) { mostrarAlerta('error', 'Precio inválido'); return }
+
+    setLoading('masivo')
+    try {
+      const body = {
+        tipo_id:     parseInt(formMasivo.tipo_id),
+        subtipo_id:  formMasivo.subtipo_id ? parseInt(formMasivo.subtipo_id) : null,
+        nuevo_precio: n,
+      }
+      const res = await api.cambioPrecioMasivo(body)
+      mostrarAlerta('success', `${res.mensaje} — ${res.accesorios_modificados} accesorio/s modificado/s.`)
+      setMostrarFormMasivo(false)
+      setFormMasivo({ tipo_id: null, subtipo_id: null, nuevo_precio: '' })
+      refetch()
+    } catch (err) {
+      mostrarAlerta('error', `Error: ${err.message}`)
+    } finally {
+      setLoading(null)
     }
   }
 
@@ -216,9 +225,14 @@ export default function AccesoriosPage() {
       <div className="page-header">
         <h2>Accesorios</h2>
         {!mostrarForm && (
-          <button className="btn btn-primary" onClick={abrirCrear}>
-            + Nuevo accesorio
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={() => { setMostrarFormMasivo(v => !v) }}>
+              Cambio precio masivo
+            </button>
+            <button className="btn btn-primary" onClick={abrirCrear}>
+              + Nuevo accesorio
+            </button>
+          </div>
         )}
       </div>
 
@@ -226,6 +240,61 @@ export default function AccesoriosPage() {
         <div className={`alerta alerta-${alerta.tipo}`}>
           <span>{alerta.msg}</span>
           <button className="alerta-cerrar" onClick={cerrarAlerta}>✕</button>
+        </div>
+      )}
+
+      {/* ── Cambio precio masivo ── */}
+      {mostrarFormMasivo && !mostrarForm && (
+        <div className="form-card">
+          <h3>Cambio de precio masivo</h3>
+          <form onSubmit={handleSubmitMasivo} className="acc-form">
+            <div className="form-row">
+              <div className="form-group">
+                <label>Tipo *</label>
+                <SearchableSelect
+                  options={options.tipos}
+                  value={formMasivo.tipo_id}
+                  onChange={(val) => {
+                    setFormMasivo(prev => ({ ...prev, tipo_id: val, subtipo_id: null }))
+                    setOption('subtipos', [])
+                    if (val) buscadorSelect('subtipos', '', { tipo_id: val })
+                  }}
+                  onSearch={(t) => buscadorSelect('tipos', t)}
+                  placeholder="Seleccionar tipo..."
+                />
+              </div>
+              <div className="form-group">
+                <label>Subtipo <small>(opcional)</small></label>
+                <SearchableSelect
+                  options={options.subtipos}
+                  value={formMasivo.subtipo_id}
+                  onChange={(val) => setFormMasivo(prev => ({ ...prev, subtipo_id: val }))}
+                  onSearch={(t) => buscadorSelect('subtipos', t, { tipo_id: formMasivo.tipo_id })}
+                  placeholder="Todos los subtipos"
+                  disabled={!formMasivo.tipo_id}
+                />
+              </div>
+              <div className="form-group">
+                <label>Nuevo precio *</label>
+                <input
+                  type="number"
+                  min={0}
+                  required
+                  placeholder="Ej: 3500"
+                  value={formMasivo.nuevo_precio}
+                  onChange={(e) => setFormMasivo(prev => ({ ...prev, nuevo_precio: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="form-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => { setMostrarFormMasivo(false); setFormMasivo({ tipo_id: null, subtipo_id: null, nuevo_precio: '' }) }}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={loading === 'masivo' || !formMasivo.tipo_id}>
+                {loading === 'masivo' ? 'Aplicando...' : 'Aplicar cambio'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -335,9 +404,9 @@ export default function AccesoriosPage() {
             </div>
 
             <div className="form-actions">
-              <button type="button" className="btn btn-secondary" onClick={cancelar} disabled={loading}>Cancelar</button>
-              <button type="submit" className="btn btn-primary" disabled={loading}>
-                {loading ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Crear accesorio'}
+              <button type="button" className="btn btn-secondary" onClick={cancelar} disabled={loading === 'form'}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={loading === 'form'}>
+                {loading === 'form' ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Crear accesorio'}
               </button>
             </div>
           </form>
@@ -358,10 +427,10 @@ export default function AccesoriosPage() {
             <button
               className="btn btn-export"
               onClick={handleExportar}
-              disabled={loadingExport}
+              disabled={loading === 'export'}
               title="Exporta los resultados con los filtros actuales"
             >
-              {loadingExport ? 'Exportando...' : '⬇ Exportar Excel'}
+              {loading === 'export' ? 'Exportando...' : '⬇ Exportar Excel'}
             </button>
           </div>
 

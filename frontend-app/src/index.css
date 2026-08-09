@@ -41,6 +41,12 @@ body {
   font-weight: 600;
 }
 
+/* 
+NavLink automáticamente agrega una clase cuando la ruta coincide: 
+👉 Cuando React Router detecta que estás en /productos,
+le pone class="active" → tu CSS lo pinta blanco.
+*/
+
 .navbar-usuario {
   display: flex;
   align-items: center;

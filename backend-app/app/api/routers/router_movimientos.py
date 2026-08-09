@@ -32,6 +32,8 @@ class MovimientoResponse(SQLModel):
     local_nombre: Optional[str] = None
     tipo_movimiento: TipoMovimiento
     cantidad: int
+    stock_anterior: Optional[int] = None
+    stock_nuevo: Optional[int] = None
     fecha: Optional[datetime] = None
     motivo: Optional[str] = None
     usuario_id: Optional[int] = None
@@ -45,7 +47,7 @@ class MovimientosListResponse(SQLModel):
 # ─── HELPER: query base compartida con exportación ───────────────────────────
 
 def _build_query(
-    local_id, accesorio_id, tipo_movimiento, fecha_desde, fecha_hasta
+    local_id, accesorio_id, tipo_movimiento, fecha_desde, fecha_hasta, usuario_id
 ):
     stmt = (
         select(MovimientoStock, Accesorio, Local)
@@ -56,6 +58,8 @@ def _build_query(
         stmt = stmt.where(MovimientoStock.local_id == local_id)
     if accesorio_id is not None:
         stmt = stmt.where(MovimientoStock.accesorio_id == accesorio_id)
+    if usuario_id is not None:
+        stmt = stmt.where(MovimientoStock.usuario_id == usuario_id)
     if tipo_movimiento is not None:
         stmt = stmt.where(MovimientoStock.tipo_movimiento == tipo_movimiento)
     if fecha_desde is not None:
@@ -77,6 +81,7 @@ def listar_movimientos(
     tipo_movimiento: Optional[TipoMovimiento] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    usuario_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
     """
@@ -85,10 +90,11 @@ def listar_movimientos(
     Filtros disponibles:
     - **local_id**: filtra por local
     - **accesorio_id**: filtra por accesorio
-    - **tipo_movimiento**: ENTRADA | SALIDA | AJUSTE | VENTA
+    - **usuario_id**: filtra por usuario que registró el movimiento
+    - **tipo_movimiento**: ENTRADA | SALIDA | AJUSTE | VENTA | DEVOLUCION | RESERVA
     - **fecha_desde** / **fecha_hasta**: rango de fechas (formato YYYY-MM-DD, inclusive en ambos extremos)
     """
-    base = _build_query(local_id, accesorio_id, tipo_movimiento, fecha_desde, fecha_hasta)
+    base = _build_query(local_id, accesorio_id, tipo_movimiento, fecha_desde, fecha_hasta, usuario_id)
 
     # Total sin paginar (para que el front pueda mostrar cuántos hay)
     count_stmt = select(func.count()).select_from(base.subquery())
@@ -107,6 +113,8 @@ def listar_movimientos(
             local_nombre=loc.nombre,
             tipo_movimiento=mov.tipo_movimiento,
             cantidad=mov.cantidad,
+            stock_anterior=mov.stock_anterior,
+            stock_nuevo=mov.stock_nuevo,
             fecha=mov.fecha,
             motivo=mov.motivo,
             usuario_id=mov.usuario_id,
@@ -124,11 +132,12 @@ def exportar_movimientos(
     tipo_movimiento: Optional[TipoMovimiento] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    usuario_id: Optional[int] = None,
     session: Session = Depends(get_session),
 ):
     """Exporta el historial de movimientos filtrado a un archivo Excel."""
 
-    stmt = _build_query(local_id, accesorio_id, tipo_movimiento, fecha_desde, fecha_hasta)
+    stmt = _build_query(local_id, accesorio_id, tipo_movimiento, fecha_desde, fecha_hasta, usuario_id)
     resultados = session.exec(stmt).all()
 
     # ── Armar el Excel ────────────────────────────────────────────────────────
@@ -226,6 +235,8 @@ def obtener_movimiento(
         local_nombre=loc.nombre,
         tipo_movimiento=mov.tipo_movimiento,
         cantidad=mov.cantidad,
+        stock_anterior=mov.stock_anterior,
+        stock_nuevo=mov.stock_nuevo,
         fecha=mov.fecha,
         motivo=mov.motivo,
         usuario_id=mov.usuario_id,

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import '../ventas/ModalDetalle.css'
-import { formatFecha, formatPrecio } from '../../helpers/formats'
+import { formatFecha, formatFechaCorta, formatPrecio } from '../../helpers/formats'
 
 function ModalHistorialReparaciones({ reparacion, historial, nombreUsuario, onClose }) {
   const backdropRef = useRef(null)
@@ -48,12 +48,12 @@ function ModalHistorialReparaciones({ reparacion, historial, nombreUsuario, onCl
               <tbody>
                 {historial.map((mov) => (
                   <tr key={mov.id}>
-                    <td>{formatFecha(mov.fecha)}</td>
+                    <td>{formatFechaCorta(mov.fecha)}</td>
                     <td>{mov.tipo_movimiento}</td>
                     <td>{mov.estado_anterior ?? '-'}</td>
                     <td>{mov.estado_nuevo ?? '-'}</td>
-                    <td className="num">{mov.monto_total_anterior != null ? formatPrecio(mov.monto_anterior) : '-'}</td>
-                    <td className="num">{mov.monto_total_nuevo != null ? formatPrecio(mov.monto_nuevo) : '-'}</td>
+                    <td className="num">{mov.monto_anterior != null ? formatPrecio(mov.monto_anterior) : '-'}</td>
+                    <td className="num">{mov.monto_nuevo != null ? formatPrecio(mov.monto_nuevo) : '-'}</td>
                     <td className="num">{mov.monto_entrega_recibido != null ? formatPrecio(mov.monto_entrega_recibido) : '-'}</td>
                     <td>{nombreUsuario(mov.usuario_id)}</td>
                     <td>{mov.observaciones ?? '-'}</td>

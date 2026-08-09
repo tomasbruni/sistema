@@ -9,7 +9,7 @@ export default function Navbar() {
     <nav className="navbar">
       <ul className="navbar-links">
         <li><NavLink to="/ventas">Ventas</NavLink></li>
-        {/* <li><NavLink to="/reparaciones">Reparaciones</NavLink></li> */}
+        <li><NavLink to="/reparaciones">Reparaciones</NavLink></li>
         <li><NavLink to="/stock">Stock</NavLink></li>
         {rol !== 'admin' && <li><NavLink to="/transferencias">Transferencias</NavLink></li>}
         {rol === 'admin' && (
@@ -28,10 +28,10 @@ export default function Navbar() {
             ]} />
             <NavDropdown label="Finanzas" items={[
               { to: "/reportes", label: "Reportes" },
-              { to: "/finanzas", label: "Finanzas" },
+              { to: "/gastos", label: "Gastos" },
             ]} />
             <li><NavLink to="/adicionales">Archivos maestros</NavLink></li>
-            <li><NavLink to="/pedidos-online">Pedidos Online</NavLink></li>
+            {/* <li><NavLink to="/pedidos-online">Pedidos Online</NavLink></li> */}
           </>
         )}
       </ul>

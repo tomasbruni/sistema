@@ -16,9 +16,11 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
-from datetime import date
+from datetime import date, datetime
 
 from app.api.deps import get_current_user, require_admin, UsuarioActual
+from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
+
 
 router = APIRouter(
     prefix="/stock",
@@ -42,16 +44,15 @@ def exportar_stock(
     subtipo_id: Optional[int] = None,
     local_id: Optional[int] = None,
     activo: Optional[bool] = True,
+    mostrar_listado: bool = True,
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(require_admin)
 ):
-    """Exporta el stock filtrado a un archivo Excel."""
     statement = (
         select(StockAccesorio, Accesorio, Local)
         .join(Accesorio, StockAccesorio.accesorio_id == Accesorio.accesorio_id) #type: ignore
         .join(Local, StockAccesorio.local_id == Local.local_id) #type: ignore
     )
-
     if buscar:
         statement = statement.where(Accesorio.nombre.ilike(f"%{buscar}%")) #type: ignore
     if tipo_id is not None:
@@ -62,43 +63,115 @@ def exportar_stock(
         statement = statement.where(StockAccesorio.local_id == local_id)
     if activo is not None:
         statement = statement.where(Accesorio.activo == activo)
-
     resultados = session.exec(statement).all()
 
-    nombre_local = "todos"
+    # ── Nombres de filtros ────────────────────────────────────────────────────
+    local_nombre = "Todos"
     if local_id is not None:
         local_obj = session.get(Local, local_id)
         if local_obj:
-            nombre_local = local_obj.nombre.lower().replace(" ", "_")
+            local_nombre = local_obj.nombre
 
+    tipo_nombre = None
+    if tipo_id is not None:
+        tipo_obj = session.get(TipoAccesorio, tipo_id)
+        tipo_nombre = tipo_obj.nombre if tipo_obj else str(tipo_id)
+
+    subtipo_nombre = None
+    if subtipo_id is not None:
+        subtipo_obj = session.get(SubtipoAccesorio, subtipo_id)
+        subtipo_nombre = subtipo_obj.nombre if subtipo_obj else str(subtipo_id)
+
+    # ── Totales por subtipo (solo cuando hay tipo pero no subtipo) ────────────
+    subtipo_totales: dict = {}
+    if tipo_id is not None and subtipo_id is None:
+        subtipos = session.exec(
+            select(SubtipoAccesorio).where(SubtipoAccesorio.tipo_id == tipo_id)
+        ).all()
+        subtipo_map: dict = {s.subtipo_id: s.nombre for s in subtipos}
+        subtipo_map[None] = "(Sin subtipo)"
+        for stock, accesorio, _local in resultados:
+            sid = accesorio.subtipo_id
+            if sid not in subtipo_totales:
+                subtipo_totales[sid] = {"nombre": subtipo_map.get(sid, str(sid)), "cantidad": 0}
+            subtipo_totales[sid]["cantidad"] += stock.cantidad
+
+    total_cantidad = sum(stock.cantidad for stock, _, _ in resultados)
+
+    # ── Workbook ──────────────────────────────────────────────────────────────
     hoy = date.today().strftime("%Y%m%d")
-    filename = f"stock_{nombre_local}_{hoy}.xlsx"
+    local_fn = local_nombre.lower().replace(" ", "_") if local_id else "todos"
+    filename = f"stock_{local_fn}_{hoy}.xlsx"
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Stock" #type: ignore
 
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(fill_type="solid", fgColor="1A1A2E")
-    header_align = Alignment(horizontal="center")
+    DARK = "1A1A2E"
+    MID  = "3A3A5E"
 
-    columnas = ["ID", "Accesorio", "Local", "Cantidad", "Estado"]
-    for col_idx, titulo in enumerate(columnas, start=1):
-        cell = ws.cell(row=1, column=col_idx, value=titulo) #type: ignore
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = header_align
+    def hdr(row, col, value):
+        c = ws.cell(row=row, column=col, value=value) #type: ignore
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill(fill_type="solid", fgColor=DARK)
+        c.alignment = Alignment(horizontal="center")
+        return c
 
-    for stock, accesorio, local in resultados:
-        ws.append([ #type: ignore
-            accesorio.accesorio_id,
-            accesorio.nombre,
-            local.nombre,
-            stock.cantidad,
-            "Activo" if accesorio.activo else "Inactivo",
-        ])
+    def lbl(row, col, value):
+        c = ws.cell(row=row, column=col, value=value) #type: ignore
+        c.font = Font(bold=True)
+        return c
 
-    anchos = {"A": 14, "B": 40, "C": 20, "D": 12, "E": 12}
+    def summary_hdr(row, col, value):
+        c = ws.cell(row=row, column=col, value=value) #type: ignore
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill(fill_type="solid", fgColor=MID)
+        c.alignment = Alignment(horizontal="center")
+        return c
+
+    r = 1
+
+    # Título
+    ws.merge_cells(f"A{r}:E{r}") #type: ignore
+    c = ws.cell(row=r, column=1, value="REPORTE DE STOCK") #type: ignore
+    c.font = Font(bold=True, size=14, color="FFFFFF")
+    c.fill = PatternFill(fill_type="solid", fgColor=DARK)
+    c.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[r].height = 22 #type: ignore
+    r += 1
+
+    # Metadatos
+    lbl(r, 1, "Fecha de generación:"); ws.cell(row=r, column=2, value=datetime.now().strftime("%d/%m/%Y %H:%M")); r += 1 #type: ignore
+    lbl(r, 1, "Local:");               ws.cell(row=r, column=2, value=local_nombre); r += 1 #type: ignore
+    lbl(r, 1, "Tipo:");                ws.cell(row=r, column=2, value=tipo_nombre or "Todos"); r += 1 #type: ignore
+    if tipo_id is not None:
+        lbl(r, 1, "Subtipo:"); ws.cell(row=r, column=2, value=subtipo_nombre or "Todos"); r += 1 #type: ignore
+
+    r += 1  # fila vacía
+
+    # Resumen
+    if subtipo_totales:
+        summary_hdr(r, 1, "Subtipo"); summary_hdr(r, 2, "Cantidad"); r += 1
+        for sid, data in sorted(subtipo_totales.items(), key=lambda x: (x[0] is None, x[1]["nombre"])):
+            ws.cell(row=r, column=1, value=data["nombre"]); ws.cell(row=r, column=2, value=data["cantidad"]); r += 1 #type: ignore
+        lbl(r, 1, "TOTAL"); c = ws.cell(row=r, column=2, value=total_cantidad); c.font = Font(bold=True); r += 1 #type: ignore
+    else:
+        lbl(r, 1, "Total accesorios:"); ws.cell(row=r, column=2, value=total_cantidad); r += 1 #type: ignore
+
+    # Listado detallado
+    if mostrar_listado:
+        r += 1  # fila vacía
+        for col_idx, titulo in enumerate(["ID", "Accesorio", "Cantidad", "Local"], start=1):
+            hdr(r, col_idx, titulo)
+        r += 1
+        for stock, accesorio, local in resultados:
+            ws.cell(row=r, column=1, value=accesorio.accesorio_id) #type: ignore
+            ws.cell(row=r, column=2, value=accesorio.nombre) #type: ignore
+            ws.cell(row=r, column=3, value=stock.cantidad) #type: ignore
+            ws.cell(row=r, column=4, value=local.nombre) #type: ignore
+            r += 1
+
+    anchos = {"A": 28, "B": 40, "C": 20, "D": 12}
     for col_letra, ancho in anchos.items():
         ws.column_dimensions[col_letra].width = ancho #type: ignore
 
@@ -159,7 +232,7 @@ def exportar_stock_por_exclusion(
     header_fill  = PatternFill(fill_type="solid", fgColor="1A1A2E")
     header_align = Alignment(horizontal="center")
 
-    columnas = ["ID", "Accesorio", "Local", "Cantidad"]
+    columnas = ["ID", "Accesorio", "Cantidad", "Local"]
     for col_idx, titulo in enumerate(columnas, start=1):
         cell = ws.cell(row=1, column=col_idx, value=titulo)  # type: ignore
         cell.font      = header_font
@@ -170,8 +243,8 @@ def exportar_stock_por_exclusion(
         ws.append([  # type: ignore
             accesorio.accesorio_id,
             accesorio.nombre,
-            local.nombre,
             stock.cantidad,
+            local.nombre,
         ])
 
     anchos = {"A": 14, "B": 40, "C": 20, "D": 12}
@@ -287,7 +360,7 @@ def ajustar_stock(
             StockAccesorio.accesorio_id == ajuste.accesorio_id,
             StockAccesorio.local_id == ajuste.local_id
         ).with_for_update()
-
+        
         stock = session.exec(stock_query).first()
 
         if not stock:
@@ -299,18 +372,13 @@ def ajustar_stock(
         cantidad_original = stock.cantidad
         diferencia = ajuste.cantidad_nueva - cantidad_original
 
-        stock.cantidad = ajuste.cantidad_nueva
-
-        movimiento = MovimientoStock(
-            accesorio_id=ajuste.accesorio_id,
-            local_id=ajuste.local_id,
+        movimiento = aplicar_movimiento_stock(
+            session, stock,
             tipo_movimiento=TipoMovimiento.AJUSTE,
-            cantidad=diferencia,
+            cantidad=diferencia, #cambio en la logica, bien
             motivo=f"{ajuste.motivo} (Ajuste: {cantidad_original} → {ajuste.cantidad_nueva})",
-            usuario_id=current_user.usuario_id
-        ) # type: ignore
-
-        session.add(movimiento)
+            usuario_id=current_user.usuario_id,
+        )
         session.commit()
         session.refresh(movimiento)
 
@@ -377,21 +445,17 @@ def egreso_stock(
                 detail=f"Stock insuficiente. Disponible: {stock.cantidad}, Solicitado: {movimiento.cantidad}"
             )
 
-        stock.cantidad -= movimiento.cantidad
         motivo = f"Egreso manual en local {movimiento.local_id}"
         if movimiento.motivo:
             motivo += f" - {movimiento.motivo}"
 
-        mov_nuevo = MovimientoStock(
-            accesorio_id=movimiento.accesorio_id,
-            local_id=movimiento.local_id,
+        mov_nuevo = aplicar_movimiento_stock(
+            session, stock,
             tipo_movimiento=TipoMovimiento.SALIDA,
             cantidad=-abs(movimiento.cantidad),
             motivo=motivo,
-            usuario_id=current_user.usuario_id
-        ) #type: ignore
-
-        session.add(mov_nuevo)
+            usuario_id=current_user.usuario_id,
+        )
         session.commit()
         session.refresh(mov_nuevo)
 
@@ -494,6 +558,7 @@ def ingresar_lote(
                 StockAccesorio.local_id == ingreso_lote.local_id
             ).with_for_update()
 
+
             stock = session.exec(stock_query).first()
             #si no existe stock (no deberia pasar igual) se crea
             if not stock:
@@ -505,20 +570,19 @@ def ingresar_lote(
                 session.add(stock)
                 session.flush()
 
-            stock_anterior = stock.cantidad
-            stock.cantidad += item.cantidad_ingreso
-
             #creo movimientos de entrada asociados al ingreso
-            mov = MovimientoStock(
-                accesorio_id=item.accesorio_id,
-                local_id=ingreso_lote.local_id,
+            # permitir_negativo: un ingreso suma stock; si el actual estaba en
+            # negativo (por ventas sin stock), un ingreso parcial debe poder dejar
+            # un residual negativo sin errorear. Queda como flag para recontar.
+            mov = aplicar_movimiento_stock(
+                session, stock,
                 tipo_movimiento=TipoMovimiento.ENTRADA,
                 cantidad=item.cantidad_ingreso,
                 motivo=f"Ingreso lote #{lote.ingreso_lote_id} - {local.nombre}",
                 usuario_id=current_user.usuario_id,
                 ingreso_lote_id=lote.ingreso_lote_id,
-            ) # type: ignore
-            session.add(mov)
+                permitir_negativo=True,
+            )
 
             # esto despues va al front para generar el remito
             # asi no tengo que hacer un endpoint q haga joins
@@ -528,8 +592,8 @@ def ingresar_lote(
                 "accesorio_id": item.accesorio_id,
                 "accesorio_nombre": accesorio.nombre,
                 "cantidad_ingresada": item.cantidad_ingreso,
-                "stock_anterior": stock_anterior,
-                "stock_nuevo": stock.cantidad,
+                "stock_anterior": mov.stock_anterior,
+                "stock_nuevo": mov.stock_nuevo,
             })
 
         session.commit()
@@ -556,7 +620,7 @@ def ingresar_lote(
         session.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
 
-
+# siempre se usa usuario_id = current_user para crear los movimientos
 # ─── TRANSFERENCIA POR LOTE ───────────────────────────────────────────────────
 @router.post("/transferir-lote", status_code=status.HTTP_200_OK)
 def transferir_lote(
@@ -633,17 +697,20 @@ def transferir_lote(
             ).with_for_update()
             stock_origen = session.exec(stock_origen_query).first()
 
+            # Si no hay fila de stock en el origen, se crea en 0 y se deja caer a
+            # negativo (mismo criterio que las ventas: producto presente físicamente
+            # pero no cargado). La vendedora no queda bloqueada para transferir.
             if not stock_origen:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No hay stock de '{accesorio.nombre}' en el local de origen"
-                )
+                stock_origen = StockAccesorio(
+                    accesorio_id=item.accesorio_id,
+                    local_id=transferencia.local_origen_id,
+                    cantidad=0,
+                )  # type: ignore
+                session.add(stock_origen)
+                session.flush()
 
-            if stock_origen.cantidad < item.cantidad_a_transferir:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Stock insuficiente de '{accesorio.nombre}'. Disponible: {stock_origen.cantidad}, solicitado: {item.cantidad_a_transferir}"
-                )
+            # Se permite que el origen quede en negativo (señal de auditoría).
+            # No se bloquea por stock insuficiente.
 
             # Stock destino con lock
             stock_destino_query = select(StockAccesorio).where(
@@ -662,45 +729,38 @@ def transferir_lote(
                 session.add(stock_destino)
                 session.flush()
 
-            stock_anterior_origen = stock_origen.cantidad
-            stock_anterior_destino = stock_destino.cantidad
-            
-            # ya estan en la sesion
-            stock_origen.cantidad -= item.cantidad_a_transferir
-            stock_destino.cantidad += item.cantidad_a_transferir
-
-            # Movimiento SALIDA en origen
-            mov_salida = MovimientoStock(
-                accesorio_id=item.accesorio_id,
-                local_id=transferencia.local_origen_id,
+            # SALIDA en origen + ENTRADA en destino
+            # (cada helper aplica el delta sobre su fila y graba el movimiento con snapshots)
+            mov_salida = aplicar_movimiento_stock(
+                session, stock_origen,
                 tipo_movimiento=TipoMovimiento.SALIDA,
                 cantidad=-abs(item.cantidad_a_transferir),
                 motivo=f"Transferencia #{registro_transf.transferencia_id} a {local_destino.nombre}",
                 usuario_id=current_user.usuario_id,
                 transferencia_id=registro_transf.transferencia_id,
-            ) # type: ignore
-            # Movimiento ENTRADA en destino
-            mov_entrada = MovimientoStock(
-                accesorio_id=item.accesorio_id,
-                local_id=transferencia.local_destino_id,
+                permitir_negativo=True,
+            )
+            # permitir_negativo: si el destino ya estaba en negativo (venta sin
+            # stock previa allí), una entrada parcial deja un residual negativo sin
+            # errorear, igual que en los ingresos.
+            mov_entrada = aplicar_movimiento_stock(
+                session, stock_destino,
                 tipo_movimiento=TipoMovimiento.ENTRADA,
                 cantidad=item.cantidad_a_transferir,
                 motivo=f"Transferencia #{registro_transf.transferencia_id} desde {local_origen.nombre}",
                 usuario_id=current_user.usuario_id,
                 transferencia_id=registro_transf.transferencia_id,
-            ) # type: ignore
-
-            session.add(mov_salida)
-            session.add(mov_entrada)
+                permitir_negativo=True,
+            )
 
             resultado_items.append({
                 "accesorio_id": item.accesorio_id,
                 "accesorio_nombre": accesorio.nombre,
                 "cantidad_transferida": item.cantidad_a_transferir,
-                "stock_origen_anterior": stock_anterior_origen,
-                "stock_origen_nuevo": stock_origen.cantidad,
-                "stock_destino_anterior": stock_anterior_destino,
-                "stock_destino_nuevo": stock_destino.cantidad,
+                "stock_origen_anterior": mov_salida.stock_anterior,
+                "stock_origen_nuevo": mov_salida.stock_nuevo,
+                "stock_destino_anterior": mov_entrada.stock_anterior,
+                "stock_destino_nuevo": mov_entrada.stock_nuevo,
             })
 
         session.commit()
@@ -940,18 +1000,17 @@ def seed_stock(
 
     for stock in stocks:
         cantidad_anterior = stock.cantidad
-        stock.cantidad = cantidad_anterior + cantidad if sumar else cantidad
-        diferencia = stock.cantidad - cantidad_anterior
+        cantidad_nueva = cantidad_anterior + cantidad if sumar else cantidad
+        diferencia = cantidad_nueva - cantidad_anterior
 
         if diferencia != 0:
-            session.add(MovimientoStock(
-                accesorio_id=stock.accesorio_id,
-                local_id=stock.local_id,
+            aplicar_movimiento_stock(
+                session, stock,
                 tipo_movimiento=TipoMovimiento.AJUSTE,
                 cantidad=diferencia,
                 motivo=f"Seed stock ({'suma' if sumar else 'seteo'} {cantidad})",
                 usuario_id=current_user.usuario_id,
-            )) #type: ignore
+            )
 
     session.commit()
     return {

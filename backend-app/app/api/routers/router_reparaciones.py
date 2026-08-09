@@ -29,7 +29,7 @@ router = APIRouter(
 # ── Inputs para transiciones ──────────────────────────────────────────────────
 
 class CambioPrecioInput(SQLModel):
-    monto_agregado: int
+    precio_final: int
     observaciones: Optional[str] = None
     fecha: Optional[date] = None
     usuario_id: Optional[int] = None
@@ -77,12 +77,15 @@ ESTADOS_VALIDOS_CREACION = ["EN_REVISION", "EN_REPARACION"]
 
 @router.get("/", response_model=list[Reparacion])
 def listar_reparaciones(
+    skip: int = 0,
+    limit: int = 20,
     estado: Optional[str] = None,
     local_id: Optional[int] = None,
     usuario_id: Optional[int] = None,
     dni_cliente: Optional[str] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
+    pagado: Optional[bool] = None,
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(get_current_user),
 ):
@@ -93,6 +96,12 @@ def listar_reparaciones(
         statement = statement.where(Reparacion.usuario_id == usuario_id)
     if estado is not None:
         statement = statement.where(Reparacion.estado == estado)
+    else:
+        # Las terminales (canceladas/entregadas) no se muestran en la lista principal;
+        # se ven filtrando explícitamente por su estado.
+        statement = statement.where(
+            Reparacion.estado.not_in(["CANCELADO", "ENTREGADO", "ENTREGADO_GARANTIA"])  # type: ignore
+        )
     if local_id is not None:
         statement = statement.where(Reparacion.local_id == local_id)
     if dni_cliente is not None:
@@ -101,6 +110,21 @@ def listar_reparaciones(
         statement = statement.where(Reparacion.fecha_ingreso >= start_of_day(fecha_desde))  # type: ignore
     if fecha_hasta is not None:
         statement = statement.where(Reparacion.fecha_ingreso <= end_of_day(fecha_hasta))  # type: ignore
+    # Solo el admin puede filtrar por reparaciones ya pagadas al reparador.
+    if current_user.rol == "admin" and pagado is not None:
+        statement = statement.where(Reparacion.pagado == pagado)
+
+    # Orden determinístico: para admin sin filtro, primero las NO pagadas al reparador.
+    # Siempre con desempate por PK para que la paginación sea estable.
+    if current_user.rol == "admin" and pagado is None:
+        statement = statement.order_by(
+            Reparacion.pagado.asc(),  # type: ignore  (no pagadas primero: False antes que True)
+            Reparacion.reparacion_id.desc(),  # type: ignore
+        )
+    else:
+        statement = statement.order_by(Reparacion.reparacion_id.desc())  # type: ignore
+
+    statement = statement.offset(skip).limit(limit)
     return session.exec(statement).all()
 
 
@@ -161,6 +185,20 @@ def crear_reparacion(
             nueva.fecha_ingreso = start_of_day(data.fecha_ingreso)
 
         session.add(nueva)
+        session.flush()  # obtener nueva.reparacion_id sin cerrar la transacción
+
+        movimiento = MovimientoReparacion(
+            reparacion_id=nueva.reparacion_id, #type: ignore
+            tipo_movimiento="CREACION",
+            estado_anterior=None,
+            estado_nuevo=data.estado_inicial,
+            pago_parcial_agregado=nueva.pago_parcial,
+            monto_nuevo=nueva.total,
+            usuario_id=usuario_id,
+        )
+        if current_user.rol == "admin" and data.fecha_ingreso is not None:
+            movimiento.fecha = start_of_day(data.fecha_ingreso)
+        session.add(movimiento)
         session.commit()
         session.refresh(nueva)
         return {"mensaje": "Reparación creada exitosamente", "reparacion": nueva}
@@ -183,7 +221,11 @@ def actualizar_reparacion(
 ):
     reparacion = _get_or_404(reparacion_id, session)
     try:
-        for key, value in data.model_dump(exclude_unset=True).items():
+        update_data = data.model_dump(exclude_unset=True)
+        if current_user.rol != "admin":
+            update_data.pop("pagado", None)
+            update_data.pop("pago_reparador", None)
+        for key, value in update_data.items():
             setattr(reparacion, key, value)
         session.commit()
         session.refresh(reparacion)
@@ -206,9 +248,15 @@ def cambio_de_precio(
     current_user: UsuarioActual = Depends(get_current_user),
 ):
     reparacion = _get_or_404(reparacion_id, session)
+    if reparacion.estado == "CANCELADO":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No se puede cambiar el precio de una reparación cancelada")
+    if reparacion.estado == "EN_REVISION":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="En revisión todavía no hay precio final; se establece al aceptar la reparación")
     try:
         monto_anterior = reparacion.total
-        monto_nuevo = monto_anterior + data.monto_agregado #type: ignore
+        monto_nuevo = data.precio_final
         reparacion.total = monto_nuevo
 
         usuario_id = (
@@ -248,6 +296,11 @@ def cambio_de_pago_parcial(
     # SI LA VENDEDORA SE EQUIVOCA, PUEDE MODIFICAR EL PAGO PARCIAL RECIBIDO,
     # PERO GENERA UN MOVIMIENTO DE CAMBIO PARA REPORTE
     reparacion = _get_or_404(reparacion_id, session)
+    # Solo mientras la plata sigue "abierta" (revisión o reparación). Una vez entregada
+    # o cancelada, el saldo ya se cerró: corregir el adelanto descuadraría la caja.
+    if reparacion.estado not in ESTADOS_VALIDOS_CREACION:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Solo se puede corregir el adelanto en estado EN_REVISION o EN_REPARACION (actual: {reparacion.estado})")
     if data.nuevo_monto < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
                             detail=f"El monto es menor a 0")
@@ -265,7 +318,7 @@ def cambio_de_pago_parcial(
         reparacion.pago_parcial = data.nuevo_monto
         movimiento = MovimientoReparacion(
             reparacion_id=reparacion_id,
-            tipo_movimiento="CAMBIO_PAGO_PARCIAL",
+            tipo_movimiento="CAMBIO_ADELANTO",
             estado_anterior=reparacion.estado,
             estado_nuevo=reparacion.estado,
             monto_anterior=pago_parcial_anterior,
@@ -360,9 +413,10 @@ def aceptar(
         movimiento = MovimientoReparacion(
             reparacion_id=reparacion_id,
             tipo_movimiento="CAMBIO_ESTADO",
-            estado_anterior=reparacion.estado,
-            estado_nuevo="EN_REPARACION",
+            estado_anterior="EN_REVISION",
+            estado_nuevo=reparacion.estado,
             pago_parcial_agregado=pago_parcial_agregado_final, #type: ignore
+            monto_nuevo=reparacion.total,
             usuario_id=usuario_id,
             observaciones=data.observaciones,
         )
@@ -434,7 +488,7 @@ def garantia(
     current_user: UsuarioActual = Depends(get_current_user),
 ):
     reparacion = _get_or_404(reparacion_id, session)
-    if reparacion.estado != "ENTREGADO":
+    if reparacion.estado not in ["ENTREGADO", "ENTREGADO_GARANTIA"] :
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Solo se puede enviar a garantía una reparación en estado ENTREGADO (actual: {reparacion.estado})")
     try:
         estado_anterior = reparacion.estado
@@ -562,18 +616,11 @@ def _bloque_patron(W, s):
     return tbl
 
 
-def _bloque_firma(W, s):
-    firma_data = [
-        [Paragraph("___________________________", s["normal9"]), Paragraph("___________________________", s["normal9"])],
-        [Paragraph("Firma del cliente", s["small8"]),            Paragraph("Aclaración", s["small8"])],
+def _bloque_firma(s):
+    return [
+        Paragraph("___________________________", s["normal9"]),
+        Paragraph("Firma y aclaración del cliente", s["small8"]),
     ]
-    tbl = Table(firma_data, colWidths=[W * 0.5, W * 0.5])
-    tbl.setStyle(TableStyle([
-        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-    ]))
-    return tbl
 
 
 # ── PDF: Certificado de recepción (estado-consciente) ─────────────────────────
@@ -590,7 +637,7 @@ def certificado_recepcion(
 
     es_revision = rep.estado == "EN_REVISION"
 
-    fecha_str   = rep.fecha_ingreso.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M") if rep.fecha_ingreso else "-"
+    fecha_str   = rep.fecha_ingreso.astimezone(TZ_AR).strftime("%d/%m/%Y") if rep.fecha_ingreso else "-"
     local_str   = local.nombre   if local   else "-"
 
     buf = io.BytesIO()
@@ -603,7 +650,7 @@ def certificado_recepcion(
 
     story = []
 
-    titulo_texto = "CERTIFICADO DE RECEPCIÓN — REVISIÓN TÉCNICA" if es_revision else "CERTIFICADO DE RECEPCIÓN — REPARACIÓN"
+    titulo_texto = "PLANILLA DE RECEPCIÓN — REVISIÓN TÉCNICA" if es_revision else "PLANILLA DE RECEPCIÓN — REPARACIÓN"
     story.append(Paragraph(titulo_texto, s["titulo"]))
     story.append(Paragraph(f"N° {reparacion_id:04d}  —  {local_str}  —  {fecha_str}", s["subtitulo"]))
     story.append(HRFlowable(width=W, thickness=1, color=colors.black, spaceAfter=5))
@@ -670,7 +717,7 @@ def certificado_recepcion(
 
     story.append(Paragraph(texto_legal, s["legal"]))
     story.append(Spacer(1, 8*mm))
-    story.append(_bloque_firma(W, s))
+    story.extend(_bloque_firma(s))
 
     doc.build(story)
     filename = f"recepcion_{reparacion_id:04d}.pdf"
@@ -728,7 +775,7 @@ def certificado_garantia(
         topMargin=14*mm, bottomMargin=14*mm,
     )
     W = A4[0] - 36*mm
-
+    s = _pdf_styles()
     styles = getSampleStyleSheet()
     def style(name, **kw):
         return ParagraphStyle(name, parent=styles["Normal"], **kw)
@@ -772,10 +819,8 @@ def certificado_garantia(
     story.append(Spacer(1, 4*mm))
 
     tbl_equipo = Table([
-        fila("Equipo:",   rep.celular),
-        fila("Total:",    f"${rep.total:,}"),
-        fila("Adelanto:", f"${rep.pago_parcial:,}"),
-        fila("Restan pagar:",    f"${(rep.total or 0) - rep.pago_parcial:,}"),
+        fila("Equipo:", rep.celular),
+        fila("Total:",  f"${rep.total:,}"),
     ], colWidths=[W * 0.22, W * 0.78])
     tbl_equipo.setStyle(tabla_style)
     story.append(tbl_equipo)
@@ -793,10 +838,9 @@ def certificado_garantia(
     # ── Reparación realizada y observaciones ───────────────────────────────────
     dots = "\u00a0" * 2 + ("." * 110)
     story.append(Paragraph("<b>REPARACIÓN REALIZADA Y OBSERVACIONES:</b>", bold9))
-    story.append(Spacer(1, 2*mm))
-    for _ in range(5):
-        story.append(Paragraph(dots, punteo))
-    story.append(Spacer(1, 8*mm))
+    story.append(Spacer(1, 1*mm))
+    story.append(Paragraph(f"{mov.observaciones}", s["normal9"])) #type: ignore
+    story.append(Spacer(1, 6*mm))
 
     # ── Fecha de retiro ────────────────────────────────────────────────────────
     story.append(Paragraph(
@@ -809,11 +853,6 @@ def certificado_garantia(
     # ── Firma, aclaración y DNI ────────────────────────────────────────────────
     story.append(Paragraph(
         "FIRMA Y ACLARACIÓN DEL CLIENTE: " + "_" * 52,
-        normal9,
-    ))
-    story.append(Spacer(1, 6*mm))
-    story.append(Paragraph(
-        "DNI N°: " + "_" * 30,
         normal9,
     ))
 
@@ -852,7 +891,7 @@ def certificado_cancelacion(
 
     monto_a_devolver = mov_cancelacion.monto_a_devolver if mov_cancelacion else 0
     fecha_cancelacion = (
-        mov_cancelacion.fecha.astimezone(TZ_AR).strftime("%d/%m/%Y %H:%M")
+        mov_cancelacion.fecha.astimezone(TZ_AR).strftime("%d/%m/%Y")
         if mov_cancelacion and mov_cancelacion.fecha else "-"
     )
 
@@ -907,25 +946,7 @@ def certificado_cancelacion(
     story.append(Paragraph(texto_legal, s["legal"]))
     story.append(Spacer(1, 10*mm))
 
-    firma_data = [
-        [
-            Paragraph("___________________________", s["normal9"]),
-            Paragraph("___________________________", s["normal9"]),
-            Paragraph("___________________________", s["normal9"]),
-        ],
-        [
-            Paragraph("Firma del cliente", s["small8"]),
-            Paragraph("Aclaración", s["small8"]),
-            Paragraph("DNI", s["small8"]),
-        ],
-    ]
-    tbl_firma = Table(firma_data, colWidths=[W * 0.38, W * 0.38, W * 0.24])
-    tbl_firma.setStyle(TableStyle([
-        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-    ]))
-    story.append(tbl_firma)
+    story.extend(_bloque_firma(s))
 
     doc.build(story)
     filename = f"cancelacion_{reparacion_id:04d}.pdf"
