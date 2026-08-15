@@ -267,6 +267,13 @@ export const api = {
       body: formData,
     }).then(handleResponse),
 
+  // FormData con campo 'files' (list[UploadFile] en el backend)
+  subirImagenesAccesorio: (accesorioId, formData) =>
+    authFetch(`${BASE_URL}/cloudinary/accesorios/${accesorioId}/imagenes`, {
+      method: 'POST',
+      body: formData,
+    }).then(handleResponse),
+
   exportarAccesorios: ({ buscar = '', tipo_id = null, subtipo_id = null, activo = true } = {}) =>
     authFetch(`${BASE_URL}/accesorios/export?${buildParams({ buscar, tipo_id, subtipo_id, activo })}`)
       .then(res => {

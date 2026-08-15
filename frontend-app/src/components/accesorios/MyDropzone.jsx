@@ -2,59 +2,34 @@ import React, {useCallback, useEffect, useState} from 'react'
 import {useDropzone} from 'react-dropzone'
 import styles from './mydropzone.module.css'
 
-export default function MyDropzone() {
-  // guardamos { file, preview } para crear la object URL UNA sola vez por imagen
-  const [imagenes, setImagenes] = useState([])
-  const [subiendo, setSubiendo] = useState(false)
+/**
+ * Componente controlado de subida de imágenes.
+ * El padre es dueño del estado (`imagenes`, `subiendo`) y de la llamada a la API.
+ *
+ * Props:
+ *  - imagenes:    File[]              lista actual de archivos (controlada por el padre)
+ *  - setImagenes: (File[]) => void    se llama con la nueva lista al agregar/eliminar
+ *  - subiendo:    boolean             deshabilita el botón mientras el padre sube
+ *  - onSubir:     () => void          el padre dispara la subida real
+ */
+export default function MyDropzone({imagenes = [], setImagenes, subiendo = false, onSubir}) {
+  // las object URLs para preview se derivan de `imagenes` y se liberan al cambiar/desmontar
+  const [previews, setPreviews] = useState([])
+
+  useEffect(() => {
+    const urls = imagenes.map(file => URL.createObjectURL(file))
+    setPreviews(urls)
+    return () => urls.forEach(url => URL.revokeObjectURL(url))
+  }, [imagenes])
 
   const onDrop = useCallback(acceptedFiles => {
-    const nuevas = acceptedFiles.map(file => ({
-      file,
-      preview: URL.createObjectURL(file),
-    }))
-    setImagenes(prev => [...prev, ...nuevas])
-  }, [])
+    setImagenes([...imagenes, ...acceptedFiles])
+  }, [imagenes, setImagenes])
 
   const {getRootProps, getInputProps, isDragActive} = useDropzone({onDrop, multiple: true})
 
   const eliminarImagen = (index) => {
-    setImagenes(prev => {
-      // liberamos la object URL de la imagen que sacamos
-      URL.revokeObjectURL(prev[index].preview)
-      return prev.filter((_, i) => i !== index)
-    })
-  }
-
-  // al desmontar el componente, liberamos todas las object URLs que queden
-  useEffect(() => {
-    return () => {
-      imagenes.forEach(img => URL.revokeObjectURL(img.preview))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // sketch: subir las imágenes al backend
-  const subirImagenes = async () => {
-    if (imagenes.length === 0) return
-    setSubiendo(true)
-    try {
-      const formData = new FormData()
-      imagenes.forEach(({file}) => formData.append('imagenes', file))
-
-      // TODO: reemplazar por la llamada real a la API (authFetch en api.js)
-      // const res = await subirImagenesAccesorio(formData)
-
-      // TODO: manejar la respuesta (ids/urls devueltos por el backend)
-
-      // limpiamos el estado y liberamos las URLs tras subir con éxito
-      imagenes.forEach(img => URL.revokeObjectURL(img.preview))
-      setImagenes([])
-    } catch (err) {
-      console.error('Error al subir las imágenes', err)
-      // TODO: mostrar alerta al usuario
-    } finally {
-      setSubiendo(false)
-    }
+    setImagenes(imagenes.filter((_, i) => i !== index))
   }
 
   return (
@@ -63,26 +38,26 @@ export default function MyDropzone() {
         <input className={styles.dropzoneInput} {...getInputProps()} />
         {
           isDragActive ?
-            <p>Drop the files here ...</p> :
-            <p>Drag 'n' drop some files here, or click to select files</p>
+            <p>Soltá las imágenes acá</p> :
+            <p>Arrastrá imágenes o clickeá para seleccionar</p>
         }
       </div>
 
       <ul className={styles.listaImagenes}>
-        {imagenes.map((img, i) => (
-          <li className={styles.imagenItem} key={`${img.file.name}-${i}`}>
+        {imagenes.map((file, i) => (
+          <li className={styles.imagenItem} key={`${file.name}-${i}`}>
             <button
               type="button"
               className={styles.botonEliminar}
               onClick={() => eliminarImagen(i)}
-              aria-label={`Eliminar ${img.file.name}`}
+              aria-label={`Eliminar ${file.name}`}
             >
               ×
             </button>
             <img
               className={styles.imagen}
-              src={img.preview}
-              alt={img.file.name}
+              src={previews[i]}
+              alt={file.name}
             />
           </li>
         ))}
@@ -91,7 +66,7 @@ export default function MyDropzone() {
       <button
         type="button"
         className={styles.botonSubir}
-        onClick={subirImagenes}
+        onClick={onSubir}
         disabled={imagenes.length === 0 || subiendo}
       >
         {subiendo ? 'Subiendo...' : 'Subir imágenes'}
