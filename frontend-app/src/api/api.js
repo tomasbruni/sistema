@@ -206,6 +206,11 @@ export const api = {
       `${BASE_URL}/ventas/?${buildParams({ skip, limit, local_id, usuario_id, fecha })}`
     ).then(handleResponse),
 
+  getFacturacionDia: ({ local_id, usuario_id = null, fecha = null } = {}) =>
+    authFetch(
+      `${BASE_URL}/ventas/facturacion-dia?${buildParams({ local_id, usuario_id, fecha })}`
+    ).then(handleResponse),
+
   listarUsuarios: ({ activo } = {}) => {
     const query = buildParams({ activo });
     return authFetch(`${BASE_URL}/usuarios/${query ? `?${query}` : ""}`).then(handleResponse);

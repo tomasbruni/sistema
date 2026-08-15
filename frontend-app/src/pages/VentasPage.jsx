@@ -88,6 +88,10 @@ export default function VentasPage() {
   const [faltante, setFaltante] = useState('')
   const [loadingSF, setLoadingSF] = useState(false)
 
+  // ─── Facturación del día (en vivo) ────────────────────────────────────────────
+  const [facturacion, setFacturacion] = useState(null)
+  const [loadingFacturacion, setLoadingFacturacion] = useState(false)
+
   const handleGenerarCajaDiaria = async () => {
     if (!localId) { mostrarAlerta('error', 'Seleccioná un local.'); return }
     if (!fechaCaja) { mostrarAlerta('error', 'Seleccioná una fecha.'); return }
@@ -111,6 +115,26 @@ export default function VentasPage() {
     }
   }
 
+  // Totales del día tal como los calcula la caja: efectivo (± sobrante/faltante)
+  // y electrónico. Se refresca junto con el listado y después de cada operación
+  // que mueva la caja, para no tener que generar el PDF.
+  const fetchFacturacion = async () => {
+    if (!localId) return
+    setLoadingFacturacion(true)
+    try {
+      const data = await api.getFacturacionDia({
+        local_id: localId,
+        fecha: fechaCaja,
+        ...(rol === 'admin' && { usuario_id: usuarioId }), // solo el admin puede pedir la de otra vendedora
+      })
+      setFacturacion(data)
+    } catch (err) {
+      mostrarAlerta('error', `Error al cargar la facturación: ${err.message}`)
+    } finally {
+      setLoadingFacturacion(false)
+    }
+  }
+
   const handleGuardarSF = async () => {
     if (!localId) { mostrarAlerta('error', 'Seleccioná un local.'); return }
     if (rol === 'admin' && !fechaCaja) { mostrarAlerta('error', 'Seleccioná una fecha.'); return }
@@ -129,6 +153,7 @@ export default function VentasPage() {
       }
       await api.upsertSobranteFaltante(body)
       mostrarAlerta('success', 'Sobrante/faltante guardado.')
+      fetchFacturacion()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
     } finally {
@@ -161,6 +186,7 @@ export default function VentasPage() {
   useEffect(() => {
     if (localId !== null) {
       fetchVentas(0)
+      fetchFacturacion()
     }
   }, [localId, fechaCaja, usuarioId])
 
@@ -463,6 +489,7 @@ export default function VentasPage() {
       mostrarAlerta('success', tipoOperacion === 'VENTA' ? 'Venta registrada correctamente.' : 'Devolución registrada correctamente.')
       setPagina(0)
       fetchVentas(0)
+      fetchFacturacion()
       volverAListado()
     } catch (err) {
       mostrarAlerta('error', `Error: ${err.message}`)
@@ -948,6 +975,33 @@ export default function VentasPage() {
       ══════════════════════════════════════════════════════════════════════ */}
       {modo === 'listado' && (
         <>
+          {/* ── Facturación del día (en vivo) ── */}
+          {facturacion && (
+            <div className={`facturacion-panel ${loadingFacturacion ? 'facturacion-actualizando' : ''}`}>
+              <span className="facturacion-titulo">
+                Facturado el {facturacion.fecha.split('-').reverse().join('/')}
+              </span>
+              <div className="facturacion-item">
+                <span>Efectivo</span>
+                <strong>{formatPrecio(facturacion.total_efectivo)}</strong>
+                {facturacion.sobrante > 0 && (
+                  <small>+ sobrante {formatPrecio(facturacion.sobrante)}</small>
+                )}
+                {facturacion.faltante > 0 && (
+                  <small>− faltante {formatPrecio(facturacion.faltante)}</small>
+                )}
+              </div>
+              <div className="facturacion-item">
+                <span>Electrónico</span>
+                <strong>{formatPrecio(facturacion.total_electronico)}</strong>
+              </div>
+              <div className="facturacion-item facturacion-item-total">
+                <span>Total</span>
+                <strong>{formatPrecio(facturacion.total)}</strong>
+              </div>
+            </div>
+          )}
+
           {loadingLista ? (
             <p className="empty-msg">Cargando...</p>
           ) : ventas.length === 0 ? (

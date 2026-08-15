@@ -139,6 +139,60 @@
   display: flex;
 }
 
+/* ── Facturación del día ─────────────────────────────────────────────────── */
+.facturacion-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid #ddd;
+  border-left: 4px solid #1a1a2e;
+  border-radius: 4px;
+  background: #fafafa;
+  transition: opacity 0.15s;
+}
+
+.facturacion-actualizando { opacity: 0.55; }
+
+.facturacion-titulo {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #666;
+}
+
+.facturacion-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.facturacion-item span {
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.facturacion-item strong {
+  font-size: 1.05rem;
+  color: #1a1a2e;
+}
+
+.facturacion-item small {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.facturacion-item-total {
+  margin-left: auto;
+  padding-left: 20px;
+  border-left: 1px solid #ddd;
+}
+
+.facturacion-item-total strong { font-size: 1.25rem; }
+
 /* ── Caja diaria footer ──────────────────────────────────────────────────── */
 .caja-diaria-footer {
   display: flex;

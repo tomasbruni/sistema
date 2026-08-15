@@ -1,10 +1,10 @@
 # PARA VENTAS
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 from sqlalchemy import exc
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
 
 from app.db.session import get_session
 from app.db.models import (
@@ -16,8 +16,9 @@ from app.db.models import (
 )
 from app.api.modelscreate import VentaCreate
 from app.api.deps import get_current_user, require_admin, UsuarioActual
-from app.api.funciones.fechas import start_of_day, end_of_day
+from app.api.funciones.fechas import start_of_day, end_of_day, TZ_AR
 from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
+from app.api.funciones.ventas_funciones import calcular_facturacion
 
 router = APIRouter(
     prefix="/ventas",
@@ -618,6 +619,37 @@ def listar_ventas(
     return resultado
  
  
+@router.get("/facturacion-dia")
+def facturacion_dia(
+    local_id: int = Query(...),
+    usuario_id: Optional[int] = Query(None),
+    fecha: Optional[date] = Query(None, description="Día a consultar (YYYY-MM-DD). Por defecto, hoy."),
+    current_user: UsuarioActual = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """
+    Facturación del día en vivo: total efectivo (± sobrante/faltante) y total
+    electrónico, para verla en la página de ventas sin generar el PDF de caja.
+
+    Solo un admin puede consultar la facturación de otra vendedora; sin
+    usuario_id, el admin ve el total del local.
+    """
+    if current_user.rol != "admin":
+        if usuario_id is not None and usuario_id != current_user.usuario_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No podés ver la facturación de otro usuario.",
+            )
+        usuario_id = current_user.usuario_id
+
+    return calcular_facturacion(
+        session,
+        local_id=local_id,
+        fecha=fecha or datetime.now(TZ_AR).date(),
+        usuario_id=usuario_id,
+    )
+
+
 @router.get("/{venta_id}")
 def obtener_venta(
     venta_id: int,
