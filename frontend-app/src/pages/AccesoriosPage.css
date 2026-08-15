@@ -118,6 +118,13 @@
   color: #999;
 }
 
+.form-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #666;
+}
+
 .form-check label {
   display: flex;
   align-items: center;
