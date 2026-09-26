@@ -637,11 +637,34 @@ export const api = {
     }).then(handleResponse),
 
   // GASTOS
-  listarGastos: ({ offset = 0, limit = LIMIT, tipo = null, tipo_factura = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/gastos/?${buildParams({ offset, limit, tipo, tipo_factura, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
+  listarGastos: ({ offset = 0, limit = LIMIT, tipo = null, tipo_factura = null, proveedor_fiscal_id = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/gastos/?${buildParams({ offset, limit, tipo, tipo_factura, proveedor_fiscal_id, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
 
-  totalesGastos: ({ tipo = null, tipo_factura = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
-    authFetch(`${BASE_URL}/gastos/totales?${buildParams({ tipo, tipo_factura, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
+  totalesGastos: ({ tipo = null, tipo_factura = null, proveedor_fiscal_id = null, fecha = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/gastos/totales?${buildParams({ tipo, tipo_factura, proveedor_fiscal_id, fecha, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  // Devuelve la Response cruda (se descarga con helpers/descargar)
+  // periodo: 'YYYY-MM' (mes de imputación)
+  descargarIvaCompras: ({ periodo }) =>
+    authFetch(`${BASE_URL}/gastos/iva-compras/excel?${buildParams({ periodo })}`),
+
+  // PROVEEDORES FISCALES (facturas de compra)
+  listarProveedoresFiscales: ({ q = null, activo = true, limit = 50 } = {}) =>
+    authFetch(`${BASE_URL}/proveedores-fiscales/?${buildParams({ q, activo, limit })}`).then(handleResponse),
+
+  crearProveedorFiscal: (body) =>
+    authFetch(`${BASE_URL}/proveedores-fiscales/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  actualizarProveedorFiscal: (id, body) =>
+    authFetch(`${BASE_URL}/proveedores-fiscales/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
 
   crearGasto: (body) =>
     authFetch(`${BASE_URL}/gastos/`, {

@@ -482,14 +482,45 @@ class TipoFactura(str, Enum):
     C = "C"
 
 
+class ProveedorFiscal(SQLModel, table=True):
+    """Proveedor de facturas de compra (libro IVA compras). No confundir con
+    `Proveedor`, que es el proveedor de celulares."""
+    __tablename__ = "proveedores_fiscales"  # type: ignore
+
+    proveedor_fiscal_id: Optional[int] = Field(default=None, primary_key=True)
+    razon_social: str
+    cuit: str = Field(index=True, sa_column_kwargs={"unique": True})  # normalizado XX-XXXXXXXX-X
+    activo: bool = Field(default=True)
+
+
+def _importe(**kwargs):
+    """Columna de importe de factura: Decimal(14,2), NOT NULL, default 0."""
+    return Field(default=Decimal("0"), max_digits=14, decimal_places=2, **kwargs)
+
+
 class Gasto(SQLModel, table=True):
     __tablename__ = "gastos"  # type: ignore
+    __table_args__ = (
+        # Evita cargar dos veces la misma factura. En gastos REAL estos campos
+        # son NULL y Postgres no considera iguales a los NULL, así que no chocan.
+        UniqueConstraint(
+            "proveedor_fiscal_id", "tipo_factura", "punto_venta", "numero_comprobante",
+            name="uq_gasto_comprobante",
+        ),
+        # Solo las facturas llevan periodo de imputacion, y siempre es el dia 1 del mes.
+        CheckConstraint(
+            "(tipo = 'REAL' AND periodo IS NULL) OR "
+            "(tipo = 'FACTURA' AND periodo IS NOT NULL AND EXTRACT(DAY FROM periodo) = 1)",
+            name="ck_gasto_periodo",
+        ),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     tipo: TipoGasto
-    descripcion: str
-    # gasto real: plata que salio | factura: total de la factura
+    descripcion: Optional[str] = None  # obligatoria en REAL; en factura es el "concepto"
+    # gasto real: plata que salio | factura: total impreso del comprobante (== suma de columnas)
     total: Decimal = Field(max_digits=14, decimal_places=2)
+    # gasto real: fecha del gasto | factura: fecha de EMISION del comprobante
     fecha: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
@@ -497,14 +528,32 @@ class Gasto(SQLModel, table=True):
     usuario_id: int = Field(foreign_key="usuarios.usuario_id")
 
     # ── Solo para tipo == FACTURA ──
+    # Mes al que se imputa el credito fiscal (dia 1). Nunca anterior al mes de emision;
+    # puede ser posterior (facturas que llegan tarde). Libro IVA y reportes filtran por aca.
+    periodo: Optional[date] = Field(default=None, sa_column=Column(Date, nullable=True))
     tipo_factura: Optional[TipoFactura] = None
+    proveedor_fiscal_id: Optional[int] = Field(default=None, foreign_key="proveedores_fiscales.proveedor_fiscal_id")
+    punto_venta: Optional[str] = None
+    numero_comprobante: Optional[str] = None
     comprada: bool = Field(default=False)       # aplica solo a factura A
     porcentaje_real: Optional[int] = None        # n%, solo factura A comprada
-    neto: Optional[Decimal] = Field(default=None, max_digits=14, decimal_places=2)  # total productos (factura A)
-    iva: Optional[Decimal] = Field(default=None, max_digits=14, decimal_places=2)   # total IVA (factura A)
+
+    # Columnas del libro IVA compras (total = suma de todas)
+    neto_105: Decimal = _importe()
+    neto_21: Decimal = _importe()
+    neto_27: Decimal = _importe()
+    iva_105: Decimal = _importe()
+    iva_21: Decimal = _importe()
+    iva_27: Decimal = _importe()
+    exento: Decimal = _importe()
+    percepcion_iva: Decimal = _importe()
+    percepcion_iibb_bsas: Decimal = _importe()
+    percepcion_iibb_caba: Decimal = _importe()
+    otros_impuestos: Decimal = _importe()  # incluye los "conceptos no gravados" de tickets de combustible
+    no_gravado: Decimal = _importe()
 
     # ── Aportes calculados (para reportes rapidos) ──
-    aporte_real: Decimal = Field(default=Decimal("0"), max_digits=14, decimal_places=2)
-    aporte_blanco: Decimal = Field(default=Decimal("0"), max_digits=14, decimal_places=2)
-    aporte_iva: Decimal = Field(default=Decimal("0"), max_digits=14, decimal_places=2)
-
+    aporte_real: Decimal = _importe()
+    aporte_blanco: Decimal = _importe()             # netos + exento + otros impuestos + no gravado
+    aporte_iva: Decimal = _importe()                # IVA + percepcion IVA (credito fiscal)
+    aporte_percepcion_iibb: Decimal = _importe()    # pago a cuenta de IIBB

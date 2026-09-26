@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './AccesoriosPage.css'
 import { api } from '../api/api'
 import { useAlerta } from '../hooks/useAlerta'
+import { descargarResponse as descargar } from '../helpers/descargar'
 
 export default function ReportesPage() {
   const { alerta, mostrarAlerta, cerrarAlerta } = useAlerta()
@@ -36,21 +37,6 @@ export default function ReportesPage() {
   }
 
   /** Descarga el xlsx de una Response cruda, usando el filename del backend. */
-  const descargar = async (res, fallback) => {
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.detail || `Error ${res.status}`)
-    }
-    const blob = await res.blob()
-    const cd   = res.headers.get('Content-Disposition') ?? ''
-    const url  = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href     = url
-    link.download = cd.match(/filename="?([^"]+)"?/)?.[1] ?? fallback
-    link.click()
-    URL.revokeObjectURL(url)
-  }
-
   const handleGenerar = async () => {
     if (!localId || !usuarioId) {
       mostrarAlerta('warning', 'Seleccioná un local y una vendedora.')

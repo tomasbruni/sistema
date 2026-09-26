@@ -16,12 +16,13 @@ from app.db.session import get_session
 from app.db.models import (
     PagoVenta, Venta, Local, Usuario,
     MovimientoReparacion, Reparacion, ConfigComision, SobranteFaltante,
-    Gasto, EgresoCaja,
+    Gasto, EgresoCaja, ProveedorFiscal,
 )
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.ventas_funciones import get_detalles_by_venta, get_pagos_by_venta
 from app.api.funciones.fechas import start_of_day, end_of_day, TZ_AR
 from app.api.funciones.reportes_ventas import iva_incluido
+from app.api.funciones.gastos_funciones import condicion_rango_gastos
 
 router = APIRouter(
     prefix="/reportes",
@@ -890,7 +891,7 @@ def _cargar_datos_facturacion(
     desde: date,
     hasta: date,
     local_id: Optional[int] = None,
-) -> tuple[list[BloqueFacturacion], list[Gasto], list[EgresoCaja], dict, dict]:
+) -> tuple[list[BloqueFacturacion], list[Gasto], list[EgresoCaja], dict, dict, dict]:
     """Arma los bloques por combinación local+vendedora con una cantidad fija de
     queries (no crece con la cantidad de combinaciones): se trae todo el período
     de una y se agrupa en Python."""
@@ -1017,10 +1018,10 @@ def _cargar_datos_facturacion(
 
     # ── Gastos y egresos ──────────────────────────────────────────────────────
     # Gasto NO tiene local_id: es global, no se filtra ni se prorratea por local.
+    # Las facturas entran por periodo de imputacion (no por emision); los REAL por fecha.
     gastos = session.exec(
         select(Gasto)
-        .where(Gasto.fecha >= dt_desde)  # type: ignore
-        .where(Gasto.fecha <= dt_hasta)  # type: ignore
+        .where(condicion_rango_gastos(desde, hasta))
         .order_by(Gasto.fecha, Gasto.id)  # type: ignore
     ).all()
 
@@ -1034,7 +1035,10 @@ def _cargar_datos_facturacion(
         stmt_egr = stmt_egr.where(EgresoCaja.local_id == local_id)
     egresos = session.exec(stmt_egr).all()
 
-    return bloques, list(gastos), list(egresos), locales_by_id, usuarios_by_id
+    proveedores_by_id = {p.proveedor_fiscal_id: p.razon_social
+                         for p in session.exec(select(ProveedorFiscal)).all()}
+
+    return bloques, list(gastos), list(egresos), locales_by_id, usuarios_by_id, proveedores_by_id
 
 
 # ─── WRITERS DEL REPORTE DE FACTURACIÓN ──────────────────────────────────────
@@ -1139,6 +1143,7 @@ def _totales_gastos(gastos: list[Gasto], egresos: list[EgresoCaja],
     tot_real    = sum(_a_pesos(g.aporte_real) for g in gastos)
     tot_blanco  = sum(_a_pesos(g.aporte_blanco) for g in gastos)
     tot_iva     = sum(_a_pesos(g.aporte_iva) for g in gastos)
+    tot_perc    = sum(_a_pesos(g.aporte_percepcion_iibb) for g in gastos)
     tot_egresos = sum(e.monto for e in egresos)
     return {
         "gastos_reales_cargados": tot_real,
@@ -1146,12 +1151,13 @@ def _totales_gastos(gastos: list[Gasto], egresos: list[EgresoCaja],
         "comisiones": total_comisiones,
         "gastos_reales": tot_real + tot_egresos + total_comisiones,
         "gastos_blanco": tot_blanco,
-        "iva_credito": tot_iva,
+        "iva_credito": tot_iva,           # IVA de facturas + percepciones de IVA
+        "percepciones_iibb": tot_perc,    # pago a cuenta de IIBB
     }
 
 
 def _escribir_seccion_gastos(ws, fila, gastos: list[Gasto], egresos: list[EgresoCaja],
-                             locales: dict, usuarios: dict, t: dict,
+                             locales: dict, usuarios: dict, proveedores: dict, t: dict,
                              local_filtrado: Optional[str] = None) -> int:
     fila = _label_row(ws, fila, "GASTOS", 12, font=_SECCION_FONT, fill=_FILL_SECCION)
     fila += 1
@@ -1168,28 +1174,31 @@ def _escribir_seccion_gastos(ws, fila, gastos: list[Gasto], egresos: list[Egreso
     # ── Tabla de gastos cargados ──────────────────────────────────────────────
     fila = _label_row(ws, fila, "Gastos cargados (montos redondeados a pesos)", 12)
     _hdr_row(ws, fila, [
-        "Fecha", "Descripción", "Tipo", "Tipo factura", "Comprada", "% real",
-        "Total", "Neto", "IVA", "Aporte real", "Aporte blanco", "Aporte IVA",
+        "Fecha emisión", "Proveedor", "Comprobante", "Descripción", "Comprada", "% real",
+        "Total", "Aporte real", "Aporte blanco", "Aporte IVA", "Percep. IIBB", "Período",
     ], wrap=True)
     fila += 1
 
     for g in gastos:
-        ap_real   = _a_pesos(g.aporte_real)
-        ap_blanco = _a_pesos(g.aporte_blanco)
-        ap_iva    = _a_pesos(g.aporte_iva)
+        if g.tipo_factura:
+            tipo_fac = g.tipo_factura.value if hasattr(g.tipo_factura, "value") else str(g.tipo_factura)
+            comprobante = f"{tipo_fac} {g.punto_venta}-{g.numero_comprobante}"
+        else:
+            comprobante = "Real"
 
         _dat_row(ws, fila, [
             _fmt_fecha_ar(g.fecha),
-            g.descripcion,
-            g.tipo.value if hasattr(g.tipo, "value") else str(g.tipo),
-            (g.tipo_factura.value if hasattr(g.tipo_factura, "value") else str(g.tipo_factura))
-            if g.tipo_factura else "—",
+            proveedores.get(g.proveedor_fiscal_id, "—") if g.proveedor_fiscal_id else "—",
+            comprobante,
+            g.descripcion or "",
             "Sí" if g.comprada else "No",
             g.porcentaje_real if g.porcentaje_real is not None else "—",
             _a_pesos(g.total),
-            _a_pesos(g.neto) if g.neto is not None else "—",
-            _a_pesos(g.iva) if g.iva is not None else "—",
-            ap_real, ap_blanco, ap_iva,
+            _a_pesos(g.aporte_real),
+            _a_pesos(g.aporte_blanco),
+            _a_pesos(g.aporte_iva),
+            _a_pesos(g.aporte_percepcion_iibb),
+            g.periodo.strftime("%m/%Y") if g.periodo else "—",
         ], num_fmt=_NUM_FMT)
         fila += 1
 
@@ -1197,8 +1206,9 @@ def _escribir_seccion_gastos(ws, fila, gastos: list[Gasto], egresos: list[Egreso
         _dat_row(ws, fila, ["Sin gastos cargados en el período"] + [""] * 11)
         fila += 1
 
-    _dat_row(ws, fila, ["TOTAL GASTOS", "", "", "", "", "", "", "", "",
-                        t["gastos_reales_cargados"], t["gastos_blanco"], t["iva_credito"]],
+    _dat_row(ws, fila, ["TOTAL GASTOS", "", "", "", "", "", "",
+                        t["gastos_reales_cargados"], t["gastos_blanco"], t["iva_credito"],
+                        t["percepciones_iibb"], ""],
              font=_BOLD_FONT, num_fmt=_NUM_FMT)
     ws.cell(row=fila, column=1).alignment = _CENTER
     fila += 2
@@ -1235,7 +1245,10 @@ def _escribir_seccion_gastos(ws, fila, gastos: list[Gasto], egresos: list[Egreso
     fila = _kv_row(ws, fila, "TOTAL GASTOS REALES", t["gastos_reales"])
     fila += 1
     fila = _kv_row(ws, fila, "TOTAL GASTOS PARA IMPUESTOS (en blanco)", t["gastos_blanco"])
-    fila = _kv_row(ws, fila, "IVA A FAVOR (crédito fiscal)", t["iva_credito"])
+    fila = _kv_row(ws, fila, "IVA A FAVOR (crédito fiscal)", t["iva_credito"],
+                   obs="IVA de las facturas + percepciones de IVA")
+    fila = _kv_row(ws, fila, "Percepciones IIBB (pago a cuenta)", t["percepciones_iibb"],
+                   obs="Se descuentan del IIBB a pagar")
 
     return fila
 
@@ -1255,13 +1268,16 @@ def _calcular_impuestos_y_balance(bloques: list[BloqueFacturacion], t: dict) -> 
     iva_a_pagar = iva_debito - t["iva_credito"]
 
     iibb = round(total_electronico * ALICUOTA_IIBB / 100)
+    # Las percepciones sufridas son pago a cuenta: reducen lo que queda por pagar,
+    # pero el impuesto del período (deducible en Ganancias) sigue siendo `iibb`.
+    iibb_a_pagar = iibb - t["percepciones_iibb"]
 
     base_ganancias = (total_electronico - iva_debito) - t["gastos_blanco"] - iibb
     ganancias = round(base_ganancias * ALICUOTA_GANANCIAS / 100) if base_ganancias > 0 else 0
 
     ingresos            = total_general + margen_rep
     resultado_operativo = ingresos - t["gastos_reales"]
-    total_impuestos     = max(0, iva_a_pagar) + iibb + ganancias
+    total_impuestos     = max(0, iva_a_pagar) + max(0, iibb_a_pagar) + ganancias
 
     return {
         **t,
@@ -1273,6 +1289,7 @@ def _calcular_impuestos_y_balance(bloques: list[BloqueFacturacion], t: dict) -> 
         "iva_debito": iva_debito,
         "iva_a_pagar": iva_a_pagar,
         "iibb": iibb,
+        "iibb_a_pagar": iibb_a_pagar,
         "base_ganancias": base_ganancias,
         "ganancias": ganancias,
         "resultado_operativo": resultado_operativo,
@@ -1293,6 +1310,11 @@ def _escribir_impuestos_y_balance(ws, fila, t: dict) -> int:
                if t["iva_a_pagar"] < 0 else "IVA débito − IVA crédito")
     fila = _kv_row(ws, fila, "IVA a pagar", t["iva_a_pagar"], obs=obs_iva)
     fila = _kv_row(ws, fila, f"Ingresos Brutos ({ALICUOTA_IIBB}% del electrónico)", t["iibb"])
+    fila = _kv_row(ws, fila, "Percepciones IIBB sufridas", -t["percepciones_iibb"],
+                   obs="Pago a cuenta (facturas de compra)")
+    obs_iibb = ("Saldo a favor (no se paga este período)"
+                if t["iibb_a_pagar"] < 0 else "IIBB − percepciones")
+    fila = _kv_row(ws, fila, "IIBB a pagar", t["iibb_a_pagar"], obs=obs_iibb)
 
     fila = _kv_row(ws, fila, "Base Ganancias", t["base_ganancias"],
                    obs="(Electrónico − IVA débito) − gastos en blanco − IIBB")
@@ -1305,7 +1327,7 @@ def _escribir_impuestos_y_balance(ws, fila, t: dict) -> int:
     fila = _kv_row(ws, fila, "Impuesto a las Ganancias", t["ganancias"], obs=obs_gan)
 
     fila = _kv_row(ws, fila, "TOTAL IMPUESTOS", t["total_impuestos"],
-                   obs="El IVA solo suma si da a pagar")
+                   obs="IVA e IIBB solo suman si dan a pagar")
     fila += 2
 
     # ── Balance final ─────────────────────────────────────────────────────────
@@ -1333,6 +1355,7 @@ def _build_facturacion_excel(
     egresos: list[EgresoCaja],
     locales: dict,
     usuarios: dict,
+    proveedores: dict,
     periodo_label: str,
     local_label: str,
     local_filtrado: Optional[str] = None,
@@ -1360,7 +1383,7 @@ def _build_facturacion_excel(
     fila = _escribir_resumen_general(ws, fila, bloques) + 2
     fila = _escribir_iva_debito(ws, fila, t["total_electronico"], t["iva_debito"]) + 2
     fila = _escribir_seccion_gastos(ws, fila, gastos, egresos, locales, usuarios,
-                                    t, local_filtrado) + 2
+                                    proveedores, t, local_filtrado) + 2
     _escribir_impuestos_y_balance(ws, fila, t)
 
     _aplicar_anchos(ws, _ANCHOS_FACTURACION)
@@ -1390,7 +1413,7 @@ def reporte_facturacion_excel(
             raise HTTPException(404, "Local no encontrado")
         local_nombre = local.nombre
 
-    bloques, gastos, egresos, locales, usuarios = _cargar_datos_facturacion(
+    bloques, gastos, egresos, locales, usuarios, proveedores = _cargar_datos_facturacion(
         session, desde, hasta, local_id)
 
     xlsx_bytes = _build_facturacion_excel(
@@ -1399,6 +1422,7 @@ def reporte_facturacion_excel(
         egresos=egresos,
         locales=locales,
         usuarios=usuarios,
+        proveedores=proveedores,
         periodo_label=f"{desde.strftime('%d/%m/%Y')} al {hasta.strftime('%d/%m/%Y')}",
         local_label=f"Local: {local_nombre}" if local_nombre else "Todos los locales",
         local_filtrado=local_nombre,
