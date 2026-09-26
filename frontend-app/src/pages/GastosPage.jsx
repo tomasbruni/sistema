@@ -33,9 +33,10 @@ const mesDeFecha = (iso) => (iso ? isoLocal(new Date(iso)).slice(0, 7) : '')
 const formatMes = (yyyymm) => (yyyymm ? `${yyyymm.slice(5, 7)}/${yyyymm.slice(0, 4)}` : '')
 
 // Alícuotas de IVA: cada una con su neto y su IVA (autocalculado, editable).
+// `principal`: se muestra en el formulario; el resto va en "Más conceptos".
 const ALICUOTAS = [
   { key: '105', label: '10,5%', rate: 0.105 },
-  { key: '21', label: '21%', rate: 0.21 },
+  { key: '21', label: '21%', rate: 0.21, principal: true },
   { key: '27', label: '27%', rate: 0.27 },
 ]
 const calcIva = (neto, rate) => {
@@ -54,13 +55,19 @@ const COLUMNAS_IMPORTE = [
 const COLUMNA_IMPORTE_C = 'no_gravado'
 
 // Conceptos extra de la factura. `soloA`: no aplican a factura C (no discrimina IVA).
+// `principal`: se muestra en el formulario; el resto va en "Más conceptos".
 const OTROS_CONCEPTOS = [
+  { key: 'percepcion_iibb_bsas', label: 'Percepción IIBB Bs As', principal: true },
+  { key: 'percepcion_iibb_caba', label: 'Percepción IIBB Capital', principal: true },
+  { key: 'otros_impuestos', label: 'Otros impuestos', ayuda: "incluye 'conceptos no gravados' de tickets de combustible", principal: true },
   { key: 'exento', label: 'Exento' },
   { key: 'no_gravado', label: 'No gravado', ayuda: 'no cargar acá lo que ya va en otros impuestos', soloA: true },
   { key: 'percepcion_iva', label: 'Percepción IVA', soloA: true },
-  { key: 'percepcion_iibb_bsas', label: 'Percepción IIBB Bs As' },
-  { key: 'percepcion_iibb_caba', label: 'Percepción IIBB Capital' },
-  { key: 'otros_impuestos', label: 'Otros impuestos', ayuda: "incluye 'conceptos no gravados' de tickets de combustible" },
+]
+// Campos que viven en el desplegable: si alguno tiene valor, se abre al editar.
+const CAMPOS_DESPLEGABLE = [
+  ...ALICUOTAS.filter(a => !a.principal).flatMap(a => [`neto_${a.key}`, `iva_${a.key}`]),
+  ...OTROS_CONCEPTOS.filter(o => !o.principal).map(o => o.key),
 ]
 
 const IMPORTES_VACIOS = Object.fromEntries(COLUMNAS_IMPORTE.map(c => [c, '']))
@@ -364,7 +371,7 @@ export default function GastosPage() {
     // Si el período ya difería de la emisión, cambiar la fecha no lo arrastra.
     setPeriodoManual(!!g.periodo && g.periodo.slice(0, 7) !== mesDeFecha(g.fecha))
     setIvaManual({ '105': true, '21': true, '27': true })  // preservamos el IVA guardado, no lo recalculamos
-    setVerOtros(OTROS_CONCEPTOS.some(o => Number(g[o.key])))
+    setVerOtros(CAMPOS_DESPLEGABLE.some(k => Number(g[k])))
     setNuevoProv(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -401,6 +408,37 @@ export default function GastosPage() {
   )
 
   const ayudaStyle = { color: '#888', fontWeight: 400 }
+
+  const filaAlicuota = (a) => (
+    <div className="form-row" key={a.key}>
+      <div className="form-group">
+        <label>Neto gravado {a.label} ($)</label>
+        <input
+          type="number" step="0.01" min="0" placeholder="0.00"
+          value={form[`neto_${a.key}`]}
+          onChange={e => setNeto(a.key, a.rate, e.target.value)}
+        />
+      </div>
+      <div className="form-group">
+        <label>IVA {a.label} ($) <span style={ayudaStyle}>· auto, editable</span></label>
+        <input
+          type="number" step="0.01" min="0" placeholder="0.00"
+          value={form[`iva_${a.key}`]}
+          onChange={e => { setIvaManual(m => ({ ...m, [a.key]: true })); setForm(f => ({ ...f, [`iva_${a.key}`]: e.target.value })) }}
+        />
+      </div>
+    </div>
+  )
+
+  const campoConcepto = (o) => (
+    <div className="form-group" key={o.key} style={{ minWidth: 200 }}>
+      <label>
+        {o.label} ($)
+        {o.ayuda && <span style={ayudaStyle}> · {o.ayuda}</span>}
+      </label>
+      {inputMonto(o.key)}
+    </div>
+  )
 
   return (
     <div className="page-container">
@@ -578,27 +616,8 @@ export default function GastosPage() {
             </>
           )}
 
-          {/* Factura A: neto + IVA por alícuota */}
-          {esFacturaA && ALICUOTAS.map(a => (
-            <div className="form-row" key={a.key}>
-              <div className="form-group">
-                <label>Neto gravado {a.label} ($)</label>
-                <input
-                  type="number" step="0.01" min="0" placeholder="0.00"
-                  value={form[`neto_${a.key}`]}
-                  onChange={e => setNeto(a.key, a.rate, e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label>IVA {a.label} ($) <span style={ayudaStyle}>· auto, editable</span></label>
-                <input
-                  type="number" step="0.01" min="0" placeholder="0.00"
-                  value={form[`iva_${a.key}`]}
-                  onChange={e => { setIvaManual(m => ({ ...m, [a.key]: true })); setForm(f => ({ ...f, [`iva_${a.key}`]: e.target.value })) }}
-                />
-              </div>
-            </div>
-          ))}
+          {/* Factura A: alícuota principal (21%) */}
+          {esFacturaA && ALICUOTAS.filter(a => a.principal).map(filaAlicuota)}
 
           {/* Factura C: importe */}
           {esFacturaC && (
@@ -608,29 +627,29 @@ export default function GastosPage() {
             </div>
           )}
 
-          {/* Otros conceptos (colapsable) */}
           {esFactura && (
             <>
+              {/* Percepciones IIBB y otros impuestos */}
+              <div className="form-row" style={{ flexWrap: 'wrap' }}>
+                {OTROS_CONCEPTOS.filter(o => o.principal).map(campoConcepto)}
+              </div>
+
+              {/* Más conceptos (colapsable): resto de alícuotas y conceptos poco usados */}
               <button
                 type="button" className="btn btn-secondary" style={{ alignSelf: 'flex-start' }}
                 onClick={() => setVerOtros(v => !v)}
               >
-                {verOtros ? '▾' : '▸'} Otros conceptos (exento, percepciones, otros impuestos)
+                {verOtros ? '▾' : '▸'} Más conceptos ({esFacturaA ? 'IVA 10,5% y 27%, exento, no gravado, percepción IVA' : 'exento'})
               </button>
               {verOtros && (
-                <div className="form-row" style={{ flexWrap: 'wrap' }}>
-                  {OTROS_CONCEPTOS
-                    .filter(o => !(o.soloA && esFacturaC))
-                    .map(o => (
-                      <div className="form-group" key={o.key} style={{ minWidth: 200 }}>
-                        <label>
-                          {o.label} ($)
-                          {o.ayuda && <span style={ayudaStyle}> · {o.ayuda}</span>}
-                        </label>
-                        {inputMonto(o.key)}
-                      </div>
-                    ))}
-                </div>
+                <>
+                  {esFacturaA && ALICUOTAS.filter(a => !a.principal).map(filaAlicuota)}
+                  <div className="form-row" style={{ flexWrap: 'wrap' }}>
+                    {OTROS_CONCEPTOS
+                      .filter(o => !o.principal && !(o.soloA && esFacturaC))
+                      .map(campoConcepto)}
+                  </div>
+                </>
               )}
 
               <div className="form-row" style={{ alignItems: 'center' }}>
