@@ -2,13 +2,15 @@ import { useState, useEffect, useMemo } from 'react'
 import { api, LIMIT } from '../api/api'
 import { useAlerta } from '../hooks/useAlerta'
 import { descargarResponse } from '../helpers/descargar'
+import { TZ_AR, fechaAR, hoyAR } from '../helpers/fechas'
+import InputFecha from '../components/InputFecha/InputFecha'
 import './AccesoriosPage.css'
 import './MovimientosPage.css'
 
 const formatFecha = (fechaStr) => {
   if (!fechaStr) return '—'
   return new Date(fechaStr).toLocaleDateString('es-AR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
+    day: '2-digit', month: '2-digit', year: 'numeric', timeZone: TZ_AR,
   })
 }
 
@@ -19,17 +21,15 @@ const num = (v) => (v === '' || v === null || v === undefined ? null : parseFloa
 // Sumas en centavos enteros para que la diferencia contra el total no arrastre errores de float.
 const centavos = (v) => Math.round((num(v) || 0) * 100)
 
-// Fecha local en formato YYYY-MM-DD (evita el corrimiento de día de toISOString, que usa UTC).
-const isoLocal = (d) => {
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-const inicioMesActual = () => { const d = new Date(); return isoLocal(new Date(d.getFullYear(), d.getMonth(), 1)) }
-const hoyLocal = () => isoLocal(new Date())
+// Fechas siempre en hora argentina (no la del navegador), igual que el backend.
+const inicioMesActual = () => `${hoyAR().slice(0, 7)}-01`
 // Meses en formato 'YYYY-MM' (se comparan bien como string).
-const mesActual = () => hoyLocal().slice(0, 7)
-const mesPasado = () => { const d = new Date(); return isoLocal(new Date(d.getFullYear(), d.getMonth() - 1, 1)).slice(0, 7) }
-const mesDeFecha = (iso) => (iso ? isoLocal(new Date(iso)).slice(0, 7) : '')
+const mesActual = () => hoyAR().slice(0, 7)
+const mesPasado = () => {
+  const [anio, mes] = mesActual().split('-').map(Number)
+  return mes === 1 ? `${anio - 1}-12` : `${anio}-${String(mes - 1).padStart(2, '0')}`
+}
+const mesDeFecha = (iso) => (iso ? fechaAR(iso).slice(0, 7) : '')
 const formatMes = (yyyymm) => (yyyymm ? `${yyyymm.slice(5, 7)}/${yyyymm.slice(0, 4)}` : '')
 
 // Alícuotas de IVA: cada una con su neto y su IVA (autocalculado, editable).
@@ -109,7 +109,7 @@ export default function GastosPage() {
   const [filtroFactura, setFiltroFactura] = useState(null)    // A | C
   // Por defecto acotamos al mes actual: los totales siempre son de un período, nunca de toda la historia.
   const [fechaDesde, setFechaDesde] = useState(inicioMesActual())
-  const [fechaHasta, setFechaHasta] = useState(hoyLocal())
+  const [fechaHasta, setFechaHasta] = useState(hoyAR())
   const [periodoLibro, setPeriodoLibro] = useState(mesActual())
   const [descargando, setDescargando] = useState(false)
 
@@ -365,7 +365,7 @@ export default function GastosPage() {
       total: str(g.total),
       ...Object.fromEntries(COLUMNAS_IMPORTE.map(k => [k, str(g[k])])),
       descripcion: g.descripcion || '',
-      fecha: g.fecha ? isoLocal(new Date(g.fecha)) : '',
+      fecha: g.fecha ? fechaAR(g.fecha) : '',
       periodo: g.periodo ? g.periodo.slice(0, 7) : '',
     })
     // Si el período ya difería de la emisión, cambiar la fecha no lo arrastra.
@@ -589,13 +589,9 @@ export default function GastosPage() {
                 </div>
                 <div className="form-group">
                   <label>Fecha de emisión</label>
-                  <input
-                    type="date"
+                  <InputFecha
                     value={form.fecha}
-                    onChange={e => {
-                      const fecha = e.target.value
-                      setForm(f => ({ ...f, fecha, periodo: periodoManual ? f.periodo : fecha.slice(0, 7) }))
-                    }}
+                    onChange={fecha => setForm(f => ({ ...f, fecha, periodo: periodoManual ? f.periodo : fecha.slice(0, 7) }))}
                   />
                 </div>
                 <div className="form-group">
@@ -717,10 +713,9 @@ export default function GastosPage() {
             {!esFactura && (
               <div className="form-group">
                 <label>Fecha</label>
-                <input
-                  type="date"
+                <InputFecha
                   value={form.fecha}
-                  onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))}
+                  onChange={fecha => setForm(f => ({ ...f, fecha }))}
                 />
               </div>
             )}
@@ -773,7 +768,7 @@ export default function GastosPage() {
           <button
             className="btn btn-secondary" style={{ marginTop: 16 }}
             onClick={() => {
-              const desde = inicioMesActual(), hasta = hoyLocal()
+              const desde = inicioMesActual(), hasta = hoyAR()
               setFechaDesde(desde); setFechaHasta(hasta); setFiltroTipo(null); setFiltroFactura(null)
               cargar(0, null, null, desde, hasta)
             }}
