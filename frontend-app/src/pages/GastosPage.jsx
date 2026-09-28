@@ -68,7 +68,7 @@ const OTROS_CONCEPTOS = [
 const CAMPOS_DESPLEGABLE = [
   ...ALICUOTAS.filter(a => !a.principal).flatMap(a => [`neto_${a.key}`, `iva_${a.key}`]),
   ...OTROS_CONCEPTOS.filter(o => !o.principal).map(o => o.key),
-]
+] 
 
 const IMPORTES_VACIOS = Object.fromEntries(COLUMNAS_IMPORTE.map(c => [c, '']))
 const IVA_MANUAL_VACIO = { '105': false, '21': false, '27': false }
@@ -572,6 +572,22 @@ export default function GastosPage() {
 
               <div className="form-row">
                 <div className="form-group">
+                  <label>Fecha de emisión</label>
+                  <InputFecha
+                    value={form.fecha}
+                    onChange={fecha => setForm(f => ({ ...f, fecha, periodo: periodoManual ? f.periodo : fecha.slice(0, 7) }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Período de imputación</label>
+                  <input
+                    type="month"
+                    min={form.fecha ? form.fecha.slice(0, 7) : undefined}
+                    value={form.periodo}
+                    onChange={e => { setPeriodoManual(true); setForm(f => ({ ...f, periodo: e.target.value })) }}
+                  />
+                </div>
+                <div className="form-group">
                   <label>Punto de venta</label>
                   <input
                     type="text" placeholder="Ej: 5382"
@@ -585,22 +601,6 @@ export default function GastosPage() {
                     type="text" placeholder="Ej: 2228"
                     value={form.numero_comprobante}
                     onChange={e => setForm(f => ({ ...f, numero_comprobante: e.target.value }))}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Fecha de emisión</label>
-                  <InputFecha
-                    value={form.fecha}
-                    onChange={fecha => setForm(f => ({ ...f, fecha, periodo: periodoManual ? f.periodo : fecha.slice(0, 7) }))}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Período de imputación <span style={ayudaStyle}>· mes del libro IVA</span></label>
-                  <input
-                    type="month"
-                    min={form.fecha ? form.fecha.slice(0, 7) : undefined}
-                    value={form.periodo}
-                    onChange={e => { setPeriodoManual(true); setForm(f => ({ ...f, periodo: e.target.value })) }}
                   />
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { isoADmy, dmyAIso, mascaraFecha } from '../../helpers/fechas'
 
-// Input de fecha tipeable en formato dd/mm/aaaa.
+// Input de fecha tipeable en formato dd/mm/aaaa (año siempre con 4 dígitos).
 // `value` y `onChange` trabajan en ISO 'YYYY-MM-DD' ('' mientras la fecha esté incompleta o sea inválida).
 export default function InputFecha({ value, onChange, style, ...props }) {
   const [texto, setTexto] = useState(() => isoADmy(value))
@@ -16,6 +16,7 @@ export default function InputFecha({ value, onChange, style, ...props }) {
 
   const handleChange = (e) => {
     const nuevo = mascaraFecha(e.target.value, texto)
+    if (nuevo === null) return   // dígito imposible (día > 31, mes > 12...): se ignora
     setTexto(nuevo)
     onChange(dmyAIso(nuevo) || '')
   }
