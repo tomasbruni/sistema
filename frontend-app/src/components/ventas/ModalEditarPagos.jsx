@@ -20,6 +20,20 @@ const estadoInicial = (pagos = []) => {
   }
 }
 
+// Representación comparable de una lista de pagos: importe absoluto (las
+// devoluciones vienen negativas), cuotas solo para electrónicos (sin dato = 1)
+// y orden estable, para detectar si la edición realmente cambia algo.
+const normalizarPagos = (pagos) =>
+  JSON.stringify(
+    pagos
+      .map((p) => ({
+        medio: p.medio_de_pago,
+        importe: Math.abs(p.importe),
+        cuotas: p.medio_de_pago === "EFECTIVO" ? null : Number(p.cuotas || 1),
+      }))
+      .sort((a, b) => a.medio.localeCompare(b.medio) || a.importe - b.importe)
+  )
+
 function ModalEditarPagos({ venta, onClose, onGuardado }) {
   const backdropRef = useRef(null)
   const inicial = estadoInicial(venta.pagos)
@@ -67,6 +81,12 @@ function ModalEditarPagos({ venta, onClose, onGuardado }) {
       }
       if (ef > 0) pagos.push({ medio_de_pago: "EFECTIVO", importe: ef })
       if (el > 0) pagos.push({ medio_de_pago: medioPagoElectronico, importe: el, cuotas: Number(cuotas) })
+    }
+
+    // Sin cambios: se cierra sin llamar al backend (evita reescribir los pagos)
+    if (normalizarPagos(pagos) === normalizarPagos(venta.pagos)) {
+      onClose?.()
+      return
     }
 
     setGuardando(true)
