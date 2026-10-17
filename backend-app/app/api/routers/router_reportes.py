@@ -16,7 +16,7 @@ from app.db.session import get_session
 from app.db.models import (
     PagoVenta, Venta, Local, Usuario,
     MovimientoReparacion, Reparacion, ConfigComision, SobranteFaltante,
-    Gasto, EgresoCaja, ProveedorFiscal,
+    Gasto, EgresoCaja, ProveedorFiscal, FacturaVenta,
 )
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.ventas_funciones import get_detalles_by_venta, get_pagos_by_venta
@@ -891,7 +891,8 @@ def _cargar_datos_facturacion(
     desde: date,
     hasta: date,
     local_id: Optional[int] = None,
-) -> tuple[list[BloqueFacturacion], list[Gasto], list[EgresoCaja], dict, dict, dict]:
+) -> tuple[list[BloqueFacturacion], list[Gasto], list[EgresoCaja], list[FacturaVenta],
+           dict, dict, dict]:
     """Arma los bloques por combinación local+vendedora con una cantidad fija de
     queries (no crece con la cantidad de combinaciones): se trae todo el período
     de una y se agrupa en Python."""
@@ -1038,7 +1039,17 @@ def _cargar_datos_facturacion(
     proveedores_by_id = {p.proveedor_fiscal_id: p.razon_social
                          for p in session.exec(select(ProveedorFiscal)).all()}
 
-    return bloques, list(gastos), list(egresos), locales_by_id, usuarios_by_id, proveedores_by_id
+    # ── Facturas de venta emitidas (informativas) ─────────────────────────────
+    # Globales como los gastos; entran por fecha de emision.
+    facturas = session.exec(
+        select(FacturaVenta)
+        .where(FacturaVenta.fecha >= desde)  # type: ignore
+        .where(FacturaVenta.fecha <= hasta)  # type: ignore
+        .order_by(FacturaVenta.fecha, FacturaVenta.id)  # type: ignore
+    ).all()
+
+    return (bloques, list(gastos), list(egresos), list(facturas),
+            locales_by_id, usuarios_by_id, proveedores_by_id)
 
 
 # ─── WRITERS DEL REPORTE DE FACTURACIÓN ──────────────────────────────────────
@@ -1131,6 +1142,60 @@ def _escribir_iva_debito(ws, fila, total_el: int, iva_debito: int) -> int:
     fila += 1
     fila = _kv_row(ws, fila, "Total facturado electrónico (en blanco)", total_el)
     fila = _kv_row(ws, fila, f"IVA en contra ({ALICUOTA_IVA}/121 del electrónico)", iva_debito)
+    return fila
+
+
+def _escribir_facturas_emitidas(ws, fila, facturas: list[FacturaVenta], iva_debito: int,
+                                local_filtrado: Optional[str] = None) -> int:
+    """Facturas de venta cargadas en el período. Solo informativo: el IVA a pagar
+    se sigue calculando sobre el electrónico (`iva_debito`), no sobre estas."""
+    fila = _label_row(ws, fila, "IVA VENTAS — FACTURAS EMITIDAS (informativo)", 12,
+                      font=_SECCION_FONT, fill=_FILL_SECCION)
+    fila += 1
+
+    if local_filtrado:
+        ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=12)
+        _cell(ws, fila, 1,
+              f"Atención: las facturas de venta no tienen local, son globales. Se listan "
+              f"TODAS aunque el reporte esté filtrado por {local_filtrado}.",
+              font=_NOTA_FONT, alignment=_LEFT)
+        fila += 2
+
+    fila = _label_row(ws, fila, "Facturas cargadas (montos redondeados a pesos)", 7)
+    _hdr_row(ws, fila, ["Fecha emisión", "Tipo", "Comprobante", "Concepto",
+                        "Neto 21%", "IVA 21%", "Total"], wrap=True)
+    fila += 1
+
+    # Se suman los montos YA redondeados para que el TOTAL cierre con la columna.
+    tot_neto = tot_iva = tot_total = 0
+    for f in facturas:
+        neto, iva, total = _a_pesos(f.neto_21), _a_pesos(f.iva_21), _a_pesos(f.total)
+        tot_neto += neto
+        tot_iva += iva
+        tot_total += total
+        tipo = f.tipo_factura.value if hasattr(f.tipo_factura, "value") else str(f.tipo_factura)
+        _dat_row(ws, fila, [
+            f.fecha.strftime("%d/%m/%Y"),
+            tipo,
+            f"{f.punto_venta}-{f.numero_comprobante}",
+            f.descripcion or "",
+            neto, iva, total,
+        ], num_fmt=_NUM_FMT)
+        fila += 1
+
+    if not facturas:
+        _dat_row(ws, fila, ["Sin facturas de venta cargadas en el período"] + [""] * 6)
+        fila += 1
+
+    _dat_row(ws, fila, ["TOTAL FACTURAS", "", "", "", tot_neto, tot_iva, tot_total],
+             font=_BOLD_FONT, num_fmt=_NUM_FMT)
+    ws.cell(row=fila, column=1).alignment = _CENTER
+    fila += 2
+
+    fila = _kv_row(ws, fila, "IVA débito según facturas emitidas", tot_iva,
+                   obs="Informativo: no modifica el IVA a pagar")
+    fila = _kv_row(ws, fila, "Diferencia vs. IVA estimado sobre electrónico", tot_iva - iva_debito,
+                   obs="IVA de facturas − IVA en contra estimado")
     return fila
 
 
@@ -1353,6 +1418,7 @@ def _build_facturacion_excel(
     bloques: list[BloqueFacturacion],
     gastos: list[Gasto],
     egresos: list[EgresoCaja],
+    facturas: list[FacturaVenta],
     locales: dict,
     usuarios: dict,
     proveedores: dict,
@@ -1382,6 +1448,7 @@ def _build_facturacion_excel(
 
     fila = _escribir_resumen_general(ws, fila, bloques) + 2
     fila = _escribir_iva_debito(ws, fila, t["total_electronico"], t["iva_debito"]) + 2
+    fila = _escribir_facturas_emitidas(ws, fila, facturas, t["iva_debito"], local_filtrado) + 2
     fila = _escribir_seccion_gastos(ws, fila, gastos, egresos, locales, usuarios,
                                     proveedores, t, local_filtrado) + 2
     _escribir_impuestos_y_balance(ws, fila, t)
@@ -1402,7 +1469,8 @@ def reporte_facturacion_excel(
     current_user: UsuarioActual = Depends(require_admin),
 ):
     """Resumen de facturación del período: una tabla por combinación local+vendedora
-    con actividad, resumen general, IVA, gastos, impuestos y balance final."""
+    con actividad, resumen general, IVA (con las facturas de venta emitidas, solo
+    informativas), gastos, impuestos y balance final."""
     if desde > hasta:
         raise HTTPException(422, "'desde' no puede ser posterior a 'hasta'")
 
@@ -1413,13 +1481,14 @@ def reporte_facturacion_excel(
             raise HTTPException(404, "Local no encontrado")
         local_nombre = local.nombre
 
-    bloques, gastos, egresos, locales, usuarios, proveedores = _cargar_datos_facturacion(
+    bloques, gastos, egresos, facturas, locales, usuarios, proveedores = _cargar_datos_facturacion(
         session, desde, hasta, local_id)
 
     xlsx_bytes = _build_facturacion_excel(
         bloques=bloques,
         gastos=gastos,
         egresos=egresos,
+        facturas=facturas,
         locales=locales,
         usuarios=usuarios,
         proveedores=proveedores,
