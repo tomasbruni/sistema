@@ -402,6 +402,13 @@ export const api = {
       body: JSON.stringify(body),
     }).then(handleResponse),
 
+  actualizarPagosVenta: (ventaId, pagos) =>
+    authFetch(`${BASE_URL}/ventas/${ventaId}/pagos`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pagos }),
+    }).then(handleResponse),
+
   // ─── MÓDULO CHIPS ──────────────────────────────────────────────────────────
   exportarChips: ({ local_id = null, estado = null, compania = null, buscar = null } = {}) =>
     authFetch(`${BASE_URL}/chips/export?${buildParams({ local_id, estado, compania, buscar, limit: 10000 })}`)

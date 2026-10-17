@@ -1,7 +1,8 @@
-from typing import Optional
-from sqlmodel import SQLModel
+from typing import List, Optional
+from sqlmodel import Field, SQLModel
 from datetime import datetime
 from app.db.models import TipoMovimiento
+from app.api.modelscreate import PagoVentaCreate
 
 # =====================
 # LOCALES
@@ -29,6 +30,11 @@ class VentaUpdate(SQLModel):
     vendedora_id: Optional[int] = None
     monto_total: Optional[int] = None
     tipo: Optional[str] = None
+
+
+class VentaPagosUpdate(SQLModel):
+    # Reemplaza todos los pagos de la venta; la suma debe coincidir con el monto_total
+    pagos: List[PagoVentaCreate] = Field(..., min_length=1)
 
 
 # =====================

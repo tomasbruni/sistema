@@ -8,7 +8,9 @@ import  useSelectOptions from '../hooks/useSelectOptions/'
 import {useAuth} from '../hooks/useAuth'
 import { useModalDetalle } from '../hooks/ventas/useModalDetalles'
 import ModalDetalle from '../components/ventas/ModalDetalle'
+import ModalEditarPagos from '../components/ventas/ModalEditarPagos'
 import { formatFecha, formatPrecio } from '../helpers/formats'
+import { fechaAR, hoyAR } from '../helpers/fechas'
 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export default function VentasPage() {
@@ -71,6 +73,19 @@ export default function VentasPage() {
   const [usuarioId, setUsuarioId] = useState(null)
 
   const {modalItem, modalAbierto, loadingModal, abrirModal, cerrarModal} = useModalDetalle(api.getDetallesVenta)
+
+  // ── Edición del medio de pago de una venta ya registrada ──────────────────
+  // Admin: cualquier venta. Vendedora: solo las del día (hora argentina); el backend lo valida igual.
+  const [ventaEditando, setVentaEditando] = useState(null)
+  const puedeEditarPago = (v) =>
+    v.tipo !== 'ONLINE' && (rol === 'admin' || fechaAR(v.fecha_ingreso) === hoyAR())
+
+  const handlePagoEditado = () => {
+    setVentaEditando(null)
+    fetchVentas(pagina)
+    fetchFacturacion()
+    mostrarAlerta('success', 'Pago actualizado.')
+  }
 
   const [cuotas, setCuotas] = useState(1);
   const [medioPagoElectronico, setMedioPagoElectronico] = useState(null);
@@ -1045,6 +1060,15 @@ export default function VentasPage() {
                           >
                             {loadingModal ? "Cargando..." : "Ver detalle"}
                           </button>
+                          {puedeEditarPago(v) && (
+                            <button
+                              className='btn-ver-detalle'
+                              style={{ marginLeft: 4 }}
+                              onClick={() => setVentaEditando(v)}
+                            >
+                              Editar pago
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1064,6 +1088,14 @@ export default function VentasPage() {
                   detalles={modalItem}
                   admin={rol === 'admin' ? true : false}
                   onClose={cerrarModal}
+                />
+              )}
+
+              {ventaEditando && (
+                <ModalEditarPagos
+                  venta={ventaEditando}
+                  onClose={() => setVentaEditando(null)}
+                  onGuardado={handlePagoEditado}
                 />
               )}
             </>

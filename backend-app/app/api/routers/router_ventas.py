@@ -14,7 +14,8 @@ from app.db.models import (
     StockAccesorio, MovimientoStock, TipoMovimiento,
     ConfigComision, Usuario
 )
-from app.api.modelscreate import VentaCreate
+from app.api.modelscreate import VentaCreate, PagoVentaCreate
+from app.api.modelsupdate import VentaPagosUpdate
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.fechas import start_of_day, end_of_day, TZ_AR
 from app.api.funciones.movimientos_stock import aplicar_movimiento_stock
@@ -37,6 +38,22 @@ def _calcular_comision(config: ConfigComision | None, precio_unitario: int, cant
         return round(precio_unitario * cantidad * config.valor / 100)
     else:  # FIJO: monto fijo por unidad
         return config.valor * cantidad
+
+
+def _validar_pagos(pagos: List[PagoVentaCreate]) -> None:
+    """Valida medio de pago y que el efectivo no tenga cuotas."""
+    for pago in pagos:
+        if pago.medio_de_pago.upper() not in MEDIOS_DE_PAGO_VALIDOS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Medio de pago inválido: '{pago.medio_de_pago}'. Válidos: {MEDIOS_DE_PAGO_VALIDOS}"
+            )
+
+        if pago.medio_de_pago.upper() == "EFECTIVO" and pago.cuotas and pago.cuotas > 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El pago en efectivo no puede tener cuotas."
+            )
 
 
 @router.post("/crear-venta", status_code=status.HTTP_201_CREATED)
@@ -66,18 +83,7 @@ def crear_venta(
     es_devolucion = venta_data.tipo.upper() == "DEVOLUCION"
 
     # ── Validar medios de pago ────────────────────────────────────────────────
-    for pago in venta_data.pagos:
-        if pago.medio_de_pago.upper() not in MEDIOS_DE_PAGO_VALIDOS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Medio de pago inválido: '{pago.medio_de_pago}'. Válidos: {MEDIOS_DE_PAGO_VALIDOS}"
-            )
-        
-        if pago.medio_de_pago.upper() == "EFECTIVO" and pago.cuotas and pago.cuotas > 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El pago en efectivo no puede tener cuotas."
-            )
+    _validar_pagos(venta_data.pagos)
 
     # ── Validar que haya al menos un producto ─────────────────────────────────
     if not venta_data.detalles_accesorios and not venta_data.detalles_celulares and not venta_data.detalles_chips:
@@ -611,7 +617,7 @@ def listar_ventas(
             "tipo":          venta.tipo,
             "monto_total":   venta.monto_total,
             "pagos": [
-                {"medio_de_pago": p.medio_de_pago, "importe": p.importe}
+                {"medio_de_pago": p.medio_de_pago, "importe": p.importe, "cuotas": p.cuotas}
                 for p in pagos
             ],
         })
@@ -648,6 +654,98 @@ def facturacion_dia(
         fecha=fecha or datetime.now(TZ_AR).date(),
         usuario_id=usuario_id,
     )
+
+
+@router.put("/{venta_id}/pagos")
+def actualizar_pagos_venta(
+    venta_id: int,
+    payload: VentaPagosUpdate,
+    session: Session = Depends(get_session),
+    current_user: UsuarioActual = Depends(get_current_user),
+):
+    """
+    Reemplaza los pagos de una venta ya registrada (corrección del medio de pago).
+    No toca productos, stock, comisiones, monto_total ni fecha_ingreso: la venta
+    sigue contando en su día original para la caja y los reportes.
+
+    - Admin: cualquier venta de cualquier fecha.
+    - Vendedora: solo sus propias ventas del día (hora argentina).
+    """
+    venta = session.get(Venta, venta_id)
+    if not venta:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Venta {venta_id} no encontrada.")
+
+    if venta.tipo.upper() == "ONLINE":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Los pagos de una venta online no se pueden editar."
+        )
+
+    if current_user.rol != "admin":
+        if venta.usuario_id != current_user.usuario_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No podés editar los pagos de una venta de otro usuario.",
+            )
+        # "Hoy" se evalúa en hora argentina, igual que el listado y la facturación del día
+        hoy = datetime.now(TZ_AR).date()
+        if not (start_of_day(hoy) <= venta.fecha_ingreso <= end_of_day(hoy)):  # type: ignore
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo podés editar los pagos de ventas del día.",
+            )
+
+    _validar_pagos(payload.pagos)
+
+    es_devolucion = venta.tipo.upper() == "DEVOLUCION"
+    monto_total   = abs(venta.monto_total)
+    total_pagado  = sum(pago.importe for pago in payload.pagos)
+    if total_pagado != monto_total:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"La suma de los pagos ({total_pagado}) no coincide con el total de los productos ({monto_total})."
+        )
+
+    try:
+        for pago in session.exec(
+            select(PagoVenta).where(PagoVenta.venta_id == venta_id)
+        ).all():
+            session.delete(pago)
+
+        # Mismo criterio que crear_venta: en devolución el importe va negativo
+        nuevos = [
+            PagoVenta(
+                venta_id=venta_id,
+                medio_de_pago=pago.medio_de_pago.upper(),
+                importe=-pago.importe if es_devolucion else pago.importe,
+                cuotas=pago.cuotas,
+            )
+            for pago in payload.pagos
+        ]
+        session.add_all(nuevos)
+        session.commit()
+
+        return {
+            "venta_id": venta_id,
+            "pagos": [
+                {"medio_de_pago": p.medio_de_pago, "importe": p.importe, "cuotas": p.cuotas}
+                for p in nuevos
+            ],
+        }
+
+    except exc.IntegrityError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Error de integridad: {str(e)}.'
+        )
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error inesperado: {str(e)}"
+        )
 
 
 @router.get("/{venta_id}")

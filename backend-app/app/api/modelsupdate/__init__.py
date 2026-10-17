@@ -5,6 +5,7 @@ __all__ = [
     "LocalUpdate",
     "UsuarioUpdate",
     "VentaUpdate",
+    "VentaPagosUpdate",
     "AccesorioUpdate",
     "TipoAccesorioUpdate",
     "SubtipoAccesorioUpdate",
