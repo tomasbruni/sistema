@@ -691,6 +691,36 @@ export const api = {
     authFetch(`${BASE_URL}/gastos/${id}`, { method: 'DELETE' })
       .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
 
+  // FACTURAS DE VENTA (libro IVA ventas)
+  listarFacturasVentas: ({ offset = 0, limit = LIMIT, tipo_factura = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/facturas-ventas/?${buildParams({ offset, limit, tipo_factura, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  totalesFacturasVentas: ({ tipo_factura = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/facturas-ventas/totales?${buildParams({ tipo_factura, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  // Devuelve la Response cruda (se descarga con helpers/descargar)
+  // periodo: 'YYYY-MM' (mes de emisión)
+  descargarIvaVentas: ({ periodo }) =>
+    authFetch(`${BASE_URL}/facturas-ventas/iva-ventas/excel?${buildParams({ periodo })}`),
+
+  crearFacturaVenta: (body) =>
+    authFetch(`${BASE_URL}/facturas-ventas/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  actualizarFacturaVenta: (id, body) =>
+    authFetch(`${BASE_URL}/facturas-ventas/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  eliminarFacturaVenta: (id) =>
+    authFetch(`${BASE_URL}/facturas-ventas/${id}`, { method: 'DELETE' })
+      .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
+
   // REPARACIONES
   listarReparaciones: ({ skip = 0, limit = LIMIT, estado = null, local_id = null, usuario_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null, pagado = null } = {}) =>
     authFetch(`${BASE_URL}/reparaciones/?${buildParams({ skip, limit, estado, local_id, usuario_id, dni_cliente, fecha_desde, fecha_hasta, pagado })}`).then(handleResponse),

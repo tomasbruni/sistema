@@ -557,3 +557,38 @@ class Gasto(SQLModel, table=True):
     aporte_blanco: Decimal = _importe()             # netos + exento + otros impuestos + no gravado
     aporte_iva: Decimal = _importe()                # IVA + percepcion IVA (credito fiscal)
     aporte_percepcion_iibb: Decimal = _importe()    # pago a cuenta de IIBB
+
+
+# =====================
+# FACTURAS DE VENTA (libro IVA ventas)
+# =====================
+class TipoFacturaVenta(str, Enum):
+    A = "A"
+    B = "B"
+
+
+class FacturaVenta(SQLModel, table=True):
+    """Factura emitida (libro IVA ventas). Por ahora es informativa: el reporte de
+    facturacion la lista pero el IVA a pagar se sigue estimando sobre el electronico.
+    Es global (sin local), igual que los gastos."""
+    __tablename__ = "facturas_ventas"  # type: ignore
+    __table_args__ = (
+        # Evita cargar dos veces la misma factura.
+        UniqueConstraint(
+            "tipo_factura", "punto_venta", "numero_comprobante",
+            name="uq_factura_venta_comprobante",
+        ),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tipo_factura: TipoFacturaVenta
+    punto_venta: str
+    numero_comprobante: str
+    fecha: date = Field(sa_column=Column(Date, nullable=False))  # emision; el debito va a este mes
+    descripcion: Optional[str] = None  # concepto
+    usuario_id: int = Field(foreign_key="usuarios.usuario_id")
+
+    # Columnas del libro IVA ventas (total = neto + IVA)
+    neto_21: Decimal = _importe()
+    iva_21: Decimal = _importe()
+    total: Decimal = _importe()

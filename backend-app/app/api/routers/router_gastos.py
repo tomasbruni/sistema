@@ -3,9 +3,6 @@ from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 from typing import Optional
 
-import calendar
-import re
-
 import openpyxl
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -18,13 +15,13 @@ from app.db.session import get_session
 from app.db.models import Gasto, TipoGasto, TipoFactura, Usuario, ProveedorFiscal
 from app.api.deps import get_current_user, require_admin, UsuarioActual
 from app.api.funciones.fechas import start_of_day, end_of_day, TZ_AR
-from app.api.funciones.gastos_funciones import primer_dia_mes, condicion_rango_gastos
+from app.api.funciones.gastos_funciones import (
+    CERO, DOS_DECIMALES, primer_dia_mes, condicion_rango_gastos,
+    dec, texto_o_none, normalizar_comprobante, rango_mes,
+)
 
 
 router = APIRouter(prefix="/gastos", tags=["Gastos reales y facturados"])
-
-CERO = Decimal("0.00")
-DOS_DECIMALES = Decimal("0.01")
 
 # Columnas del libro IVA compras, en el orden del Excel del contador (G..R).
 # El total del comprobante es SIEMPRE la suma de todas.
@@ -122,33 +119,8 @@ class GastoTotales(SQLModel):
 
 # ── Logica de negocio ─────────────────────────────────────────────────────────
 
-def _dec(v) -> Decimal:
-    return CERO if v is None else Decimal(v).quantize(DOS_DECIMALES, ROUND_HALF_UP)
-
-
 def _fecha_ar(dt: Optional[datetime]) -> Optional[date]:
     return dt.astimezone(TZ_AR).date() if dt else None
-
-
-def _texto(v) -> Optional[str]:
-    if v is None:
-        return None
-    v = str(v).strip()
-    return v or None
-
-
-def _normalizar_comprobante(v) -> Optional[str]:
-    """Punto de venta / numero de comprobante en una forma unica, para que el control
-    de duplicados y el Excel vean el mismo valor: sin ceros a la izquierda en cada
-    tramo numerico separado por guion ("00005" -> "5", "07008-00041244" -> "7008-41244").
-    Si algun tramo no es puramente numerico, queda como vino (solo sin espacios)."""
-    texto = _texto(v)
-    if texto is None:
-        return None
-    tramos = [t.strip() for t in texto.split("-")]
-    if all(re.fullmatch(r"[0-9]+", t) for t in tramos):
-        return "-".join(str(int(t)) for t in tramos)
-    return texto
 
 
 def _normalizar_y_calcular(data: dict, session: Session) -> dict:
@@ -156,7 +128,7 @@ def _normalizar_y_calcular(data: dict, session: Session) -> dict:
     (importes normalizados + aportes calculados). Sirve tanto para crear como para
     actualizar (mergeando el payload sobre el registro existente)."""
     tipo: TipoGasto = data["tipo"]
-    descripcion = _texto(data.get("descripcion"))
+    descripcion = texto_o_none(data.get("descripcion"))
 
     campos: dict = {
         "tipo": tipo,
@@ -174,7 +146,7 @@ def _normalizar_y_calcular(data: dict, session: Session) -> dict:
     if data.get("total") is None:
         raise HTTPException(422, "Falta el 'total'" if tipo == TipoGasto.REAL
                             else "Falta el 'total' del comprobante (tal como figura impreso)")
-    total = _dec(data["total"])
+    total = dec(data["total"])
     if total <= 0:
         raise HTTPException(422, "El total tiene que ser mayor a 0")
     campos["total"] = total
@@ -198,8 +170,8 @@ def _normalizar_y_calcular(data: dict, session: Session) -> dict:
     if not proveedor or not proveedor.activo:
         raise HTTPException(404, "Proveedor no encontrado o inactivo")
 
-    punto_venta = _normalizar_comprobante(data.get("punto_venta"))
-    numero = _normalizar_comprobante(data.get("numero_comprobante"))
+    punto_venta = normalizar_comprobante(data.get("punto_venta"))
+    numero = normalizar_comprobante(data.get("numero_comprobante"))
     if not punto_venta or not numero:
         raise HTTPException(422, "Una factura necesita 'punto_venta' y 'numero_comprobante'")
     fecha = data.get("fecha")
@@ -211,7 +183,7 @@ def _normalizar_y_calcular(data: dict, session: Session) -> dict:
     if periodo < primer_dia_mes(fecha):
         raise HTTPException(422, "El período de imputación no puede ser anterior al mes de emisión")
 
-    importes = {c: _dec(data.get(c)) for c in COLUMNAS_IMPORTE}
+    importes = {c: dec(data.get(c)) for c in COLUMNAS_IMPORTE}
     negativos = [c for c, v in importes.items() if v < 0]
     if negativos:
         raise HTTPException(422, f"Importes negativos no permitidos: {', '.join(negativos)}")
@@ -366,12 +338,7 @@ def iva_compras_excel(
     """Libro IVA compras de un periodo, con el formato de la hoja COMPRAS del contador.
     Solo facturas (los gastos REAL no tienen comprobante), filtradas por periodo de
     imputacion; la columna FECHA muestra la fecha de emision."""
-    m = re.fullmatch(r"(\d{4})-(\d{2})", periodo)
-    if not m or not 1 <= int(m.group(2)) <= 12:
-        raise HTTPException(422, "'periodo' debe tener formato YYYY-MM")
-    anio, mes = int(m.group(1)), int(m.group(2))
-    inicio = date(anio, mes, 1)
-    fin = date(anio, mes, calendar.monthrange(anio, mes)[1])
+    inicio, fin = rango_mes(periodo)
 
     filas = session.exec(
         select(Gasto, ProveedorFiscal)
