@@ -32,6 +32,7 @@ from app.api.routers import (
     router_gastos,
     router_proveedores_fiscales,
     router_facturas_ventas,
+    router_ingresos_dinero,
     router_reparaciones,
     router_sobrantes_faltantes)
 
@@ -68,6 +69,7 @@ mainapp.include_router(router_transferencias.router)
 mainapp.include_router(router_gastos.router)
 mainapp.include_router(router_proveedores_fiscales.router)
 mainapp.include_router(router_facturas_ventas.router)
+mainapp.include_router(router_ingresos_dinero.router)
 mainapp.include_router(router_reparaciones.router)
 mainapp.include_router(router_sobrantes_faltantes.router)
 

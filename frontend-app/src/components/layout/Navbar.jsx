@@ -30,6 +30,7 @@ export default function Navbar() {
               { to: "/reportes", label: "Reportes" },
               { to: "/gastos", label: "Gastos" },
               { to: "/facturas-ventas", label: "Facturas de venta" },
+              { to: "/ingresos-dinero", label: "Ingresos de dinero" },
             ]} />
             <li><NavLink to="/adicionales">Archivos maestros</NavLink></li>
             {/* <li><NavLink to="/pedidos-online">Pedidos Online</NavLink></li> */}

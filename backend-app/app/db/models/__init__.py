@@ -55,6 +55,9 @@ from .models import (
     # Facturas de venta
     FacturaVenta,
     TipoFacturaVenta,
+
+    # Ingresos de dinero
+    IngresoDinero,
 )
 
 __all__ = [
@@ -94,4 +97,5 @@ __all__ = [
     "ProveedorFiscal",
     "FacturaVenta",
     "TipoFacturaVenta",
+    "IngresoDinero",
 ]

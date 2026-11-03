@@ -592,3 +592,17 @@ class FacturaVenta(SQLModel, table=True):
     neto_21: Decimal = _importe()
     iva_21: Decimal = _importe()
     total: Decimal = _importe()
+
+
+# =====================
+# INGRESOS DE DINERO (fuentes que no son ventas)
+# =====================
+class IngresoDinero(SQLModel, table=True):
+    """Ingreso de dinero de fuentes que no son ventas. Global (sin local), igual que los gastos."""
+    __tablename__ = "ingresos_dinero"  # type: ignore
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    monto: Decimal = Field(max_digits=14, decimal_places=2)
+    descripcion: str
+    fecha: date = Field(sa_column=Column(Date, nullable=False))
+    usuario_id: int = Field(foreign_key="usuarios.usuario_id")

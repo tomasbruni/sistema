@@ -721,6 +721,35 @@ export const api = {
     authFetch(`${BASE_URL}/facturas-ventas/${id}`, { method: 'DELETE' })
       .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
 
+  // INGRESOS DE DINERO (fuentes que no son ventas)
+  listarIngresosDinero: ({ offset = 0, limit = LIMIT, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/ingresos-dinero/?${buildParams({ offset, limit, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  totalesIngresosDinero: ({ fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/ingresos-dinero/totales?${buildParams({ fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  // Devuelve la Response cruda (se descarga con helpers/descargar)
+  descargarIngresosDineroExcel: ({ fecha_desde, fecha_hasta }) =>
+    authFetch(`${BASE_URL}/ingresos-dinero/excel?${buildParams({ fecha_desde, fecha_hasta })}`),
+
+  crearIngresoDinero: (body) =>
+    authFetch(`${BASE_URL}/ingresos-dinero/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  actualizarIngresoDinero: (id, body) =>
+    authFetch(`${BASE_URL}/ingresos-dinero/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(handleResponse),
+
+  eliminarIngresoDinero: (id) =>
+    authFetch(`${BASE_URL}/ingresos-dinero/${id}`, { method: 'DELETE' })
+      .then(res => { if (!res.ok) return res.json().then(e => { throw new Error(e.detail || `Error ${res.status}`) }) }),
+
   // REPARACIONES
   listarReparaciones: ({ skip = 0, limit = LIMIT, estado = null, local_id = null, usuario_id = null, dni_cliente = null, fecha_desde = null, fecha_hasta = null, pagado = null } = {}) =>
     authFetch(`${BASE_URL}/reparaciones/?${buildParams({ skip, limit, estado, local_id, usuario_id, dni_cliente, fecha_desde, fecha_hasta, pagado })}`).then(handleResponse),

@@ -18,6 +18,7 @@ import ReparacionesPage from './pages/ReparacionesPage'
 import ImportarExcelPage from './pages/ImportarExcelPage'
 import GastosPage from './pages/GastosPage'
 import FacturasVentasPage from './pages/FacturasVentasPage'
+import IngresosDineroPage from './pages/IngresosDineroPage'
 
 function RutaPrivada({ children }) {
   const { token } = useAuth()
@@ -53,6 +54,7 @@ export default function App() {
           {/* <Route path="pedidos-online" element={<RutaAdmin><PedidosOnlinePage /></RutaAdmin>} /> */}
           <Route path="gastos" element={<RutaAdmin><GastosPage /></RutaAdmin>} />
           <Route path="facturas-ventas" element={<RutaAdmin><FacturasVentasPage /></RutaAdmin>} />
+          <Route path="ingresos-dinero" element={<RutaAdmin><IngresosDineroPage /></RutaAdmin>} />
           <Route path="reparaciones" element={<ReparacionesPage />} />
           <Route path="importar-excel" element={<RutaAdmin><ImportarExcelPage /></RutaAdmin>} />
         </Route>
