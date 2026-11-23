@@ -17,6 +17,7 @@ def aplicar_movimiento_stock(
     ingreso_lote_id: Optional[int] = None,
     transferencia_id: Optional[int] = None,
     pedido_online_id: Optional[int] = None,
+    inventario_id: Optional[int] = None,
     permitir_negativo: bool = False,
 ) -> MovimientoStock:
     """
@@ -60,6 +61,7 @@ def aplicar_movimiento_stock(
         ingreso_lote_id=ingreso_lote_id,
         transferencia_id=transferencia_id,
         pedido_online_id=pedido_online_id,
+        inventario_id=inventario_id,
     )  # type: ignore
     session.add(movimiento)
 

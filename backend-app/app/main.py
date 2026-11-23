@@ -34,7 +34,8 @@ from app.api.routers import (
     router_facturas_ventas,
     router_ingresos_dinero,
     router_reparaciones,
-    router_sobrantes_faltantes)
+    router_sobrantes_faltantes,
+    router_inventarios)
 
 from app.db.models import *
 from app.db.session import get_session, SessionDep
@@ -72,6 +73,7 @@ mainapp.include_router(router_facturas_ventas.router)
 mainapp.include_router(router_ingresos_dinero.router)
 mainapp.include_router(router_reparaciones.router)
 mainapp.include_router(router_sobrantes_faltantes.router)
+mainapp.include_router(router_inventarios.router)
 
 origins = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5500,http://localhost:5500,http://localhost:5173")
 

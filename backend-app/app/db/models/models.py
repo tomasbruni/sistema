@@ -182,6 +182,7 @@ class MovimientoStock(SQLModel, table=True):
     motivo: Optional[str] = Field(default=None, max_length=255)
     usuario_id: Optional[int] = Field(default=None, foreign_key="usuarios.usuario_id")
     pedido_online_id: Optional[int] = Field(default=None, foreign_key="pedidos_online.pedido_id")
+    inventario_id: Optional[int] = Field(default=None, foreign_key="inventarios.inventario_id", index=True)
 
 
 class IngresoLote(SQLModel, table=True):
@@ -208,6 +209,21 @@ class Transferencia(SQLModel, table=True):
     )
     usuario_id: Optional[int] = Field(default=None, foreign_key="usuarios.usuario_id")
     observaciones: Optional[str]
+
+
+class Inventario(SQLModel, table=True):
+    """Inventario físico de un local. Agrupa los movimientos AJUSTE que generó."""
+    __tablename__ = "inventarios" #type: ignore
+
+    inventario_id: Optional[int] = Field(default=None, primary_key=True)
+    fecha: Optional[datetime] = Field(default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+    local_id: int = Field(foreign_key="locales.local_id")
+    usuario_id: Optional[int] = Field(default=None, foreign_key="usuarios.usuario_id")
+    observaciones: Optional[str] = Field(default=None)
+    # Snapshot al aplicar: Σ (sistema - fisico) * precio. Los precios cambian después.
+    sobrante_estimado: int = Field(default=0)
 
 
 # =====================

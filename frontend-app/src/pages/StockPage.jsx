@@ -549,7 +549,7 @@ export default function StockPage() {
                   className="btn btn-export"
                   onClick={() => setPanelExportAbierto(p => !p)}
                 >
-                  {panelExportAbierto ? '✕ Exportar con exclusiones' : '⬇ Exportar con exclusiones'}
+                  {panelExportAbierto ? '✕ Planilla de inventario' : '⬇ Planilla de inventario'}
                 </button>
                 }
               </div>
@@ -557,13 +557,14 @@ export default function StockPage() {
               {/* ── Panel exportación por exclusión ── */}
               {panelExportAbierto && rol === 'admin' && (
                 <div className="form-card">
-                  <h3>Exportar listado de stock</h3>
+                  <h3>Planilla de inventario</h3>
+                  <span className="field-hint">Columnas ID, Accesorio, Sistema y Fisico. Completá Fisico al contar y cargala en Inventario.</span>
                   <div className="form-row">
                     {locales.length > 0 && (
                       <div className="form-group">
                         <label>Local</label>
                         <select value={localExportId ?? ''} onChange={e => setLocalExportId(e.target.value ? parseInt(e.target.value) : null)}>
-                          <option value="">Todos los locales</option>
+                          <option value="">Elegí un local</option>
                           {locales.map(l => (
                             <option key={l.local_id} value={l.local_id}>{l.nombre}</option>
                           ))}
@@ -595,9 +596,10 @@ export default function StockPage() {
                     <button
                       className="btn btn-primary"
                       onClick={handleExportarPorExclusion}
-                      disabled={loadingExportExclusion}
+                      disabled={loadingExportExclusion || !localExportId}
+                      title={!localExportId ? 'Elegí un local' : undefined}
                     >
-                      {loadingExportExclusion ? 'Exportando...' : '⬇ Descargar Excel'}
+                      {loadingExportExclusion ? 'Exportando...' : '⬇ Descargar planilla de inventario'}
                     </button>
                   </div>
                 </div>

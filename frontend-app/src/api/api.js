@@ -321,6 +321,23 @@ export const api = {
         return { blob, filename }
       }),
 
+  // MODULO INVENTARIO
+  // Devuelven la Response cruda: se descargan con descargarResponse (muestra el detail del error)
+  reporteInventario: (formData) =>
+    authFetch(`${BASE_URL}/inventarios/reporte`, { method: 'POST', body: formData }),
+
+  aplicarInventario: (formData) =>
+    authFetch(`${BASE_URL}/inventarios`, { method: 'POST', body: formData }).then(handleResponse),
+
+  listarInventarios: ({ local_id = null, fecha_desde = null, fecha_hasta = null } = {}) =>
+    authFetch(`${BASE_URL}/inventarios?${buildParams({ local_id, fecha_desde, fecha_hasta })}`).then(handleResponse),
+
+  obtenerInventario: (id) =>
+    authFetch(`${BASE_URL}/inventarios/${id}`).then(handleResponse),
+
+  descargarInventarioExcel: (id) =>
+    authFetch(`${BASE_URL}/inventarios/${id}/excel`),
+
   // Reemplaza a ingresoEgreso para el flujo de ingreso
   ingresarLote: (body) =>
     authFetch(`${BASE_URL}/stock/ingresar-lote`, {

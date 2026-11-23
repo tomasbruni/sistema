@@ -29,6 +29,7 @@ from .models import (
     TipoMovimiento,
     IngresoLote,
     Transferencia,
+    Inventario,
 
 
     # Detalles de ventas
@@ -84,6 +85,7 @@ __all__ = [
     "ConfigComision",
     "IngresoLote",
     "Transferencia",
+    "Inventario",
     "MarcaCelular",
     "EgresoCaja",
     "SobranteFaltante",
