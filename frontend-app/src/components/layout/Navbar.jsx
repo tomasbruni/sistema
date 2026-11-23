@@ -19,6 +19,7 @@ export default function Navbar() {
               { to: "/ingresos-chips", label: "Ingresos chips" },
               { to: "/transferencias", label: "Transferencias" },
               { to: "/movimientos", label: "Movimientos" },
+              { to: "/inventario", label: "Inventario" },
             ]} />
             <NavDropdown label="Productos" items={[
               { to: "/accesorios", label: "Accesorios" },

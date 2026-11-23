@@ -188,12 +188,15 @@ def exportar_stock(
 
 @router.get("/export-por-exclusion")
 def exportar_stock_por_exclusion(
+    local_id: int,
     excluir_tipo_ids: Optional[str] = None,
-    local_id: Optional[int] = None,
     session: Session = Depends(get_session),
     current_user: UsuarioActual = Depends(require_admin)
 ):
-    """Exporta todo el stock activo excluyendo los tipos indicados."""
+    """
+    Planilla de inventario: stock activo de un local excluyendo los tipos indicados.
+    Columnas ID | Accesorio | Sistema | Fisico (Fisico vacío, a completar al contar).
+    """
     excluir_ids: list[int] = []
     if excluir_tipo_ids:
         try:
@@ -201,28 +204,25 @@ def exportar_stock_por_exclusion(
         except ValueError:
             pass
 
-    statement = (
-        select(StockAccesorio, Accesorio, Local)
-        .join(Accesorio, StockAccesorio.accesorio_id == Accesorio.accesorio_id)  # type: ignore
-        .join(Local, StockAccesorio.local_id == Local.local_id)  # type: ignore
-        .where(Accesorio.activo == True)  # type: ignore
-    )
+    local_obj = session.get(Local, local_id)
+    if not local_obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Local {local_id} no encontrado")
 
-    if local_id is not None:
-        statement = statement.where(StockAccesorio.local_id == local_id)
+    statement = (
+        select(StockAccesorio, Accesorio)
+        .join(Accesorio, StockAccesorio.accesorio_id == Accesorio.accesorio_id)  # type: ignore
+        .where(Accesorio.activo == True)  # type: ignore
+        .where(StockAccesorio.local_id == local_id)
+        .order_by(Accesorio.nombre)  # type: ignore
+    )
     if excluir_ids:
         statement = statement.where(Accesorio.tipo_id.notin_(excluir_ids))  # type: ignore
 
     resultados = session.exec(statement).all()
 
-    nombre_local = "todos"
-    if local_id is not None:
-        local_obj = session.get(Local, local_id)
-        if local_obj:
-            nombre_local = local_obj.nombre.lower().replace(" ", "_")
-
+    nombre_local = local_obj.nombre.lower().replace(" ", "_")
     hoy = date.today().strftime("%Y%m%d")
-    filename = f"stock_{nombre_local}_{hoy}.xlsx"
+    filename = f"inventario_{nombre_local}_{hoy}.xlsx"
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -231,25 +231,26 @@ def exportar_stock_por_exclusion(
     header_font  = Font(bold=True, color="FFFFFF")
     header_fill  = PatternFill(fill_type="solid", fgColor="1A1A2E")
     header_align = Alignment(horizontal="center")
+    sistema_fill = PatternFill(fill_type="solid", fgColor="EDEDED")
+    fisico_fill  = PatternFill(fill_type="solid", fgColor="FFF2CC")
 
-    columnas = ["ID", "Accesorio", "Cantidad", "Local"]
+    columnas = ["ID", "Accesorio", "Sistema", "Fisico"]
     for col_idx, titulo in enumerate(columnas, start=1):
         cell = ws.cell(row=1, column=col_idx, value=titulo)  # type: ignore
         cell.font      = header_font
         cell.fill      = header_fill
         cell.alignment = header_align
 
-    for stock, accesorio, local in resultados:
-        ws.append([  # type: ignore
-            accesorio.accesorio_id,
-            accesorio.nombre,
-            stock.cantidad,
-            local.nombre,
-        ])
+    for r, (stock, accesorio) in enumerate(resultados, start=2):
+        ws.cell(row=r, column=1, value=accesorio.accesorio_id)  # type: ignore
+        ws.cell(row=r, column=2, value=accesorio.nombre)  # type: ignore
+        ws.cell(row=r, column=3, value=stock.cantidad).fill = sistema_fill  # type: ignore
+        ws.cell(row=r, column=4).fill = fisico_fill  # type: ignore
 
-    anchos = {"A": 14, "B": 40, "C": 20, "D": 12}
+    anchos = {"A": 10, "B": 45, "C": 12, "D": 12}
     for col_letra, ancho in anchos.items():
         ws.column_dimensions[col_letra].width = ancho  # type: ignore
+    ws.freeze_panes = "A2"  # type: ignore
 
     buffer = BytesIO()
     wb.save(buffer)
